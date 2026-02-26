@@ -39,31 +39,10 @@
         </section>
 
         <aside id="sidebar" class="sidebar" aria-label="Decision and controls">
-          <article class="control-pane">
-            <p class="panel-kicker">Scenario</p>
-            <div class="preset-row" role="group" aria-label="Traffic scenario presets">
-              <button class="preset-btn" data-preset="normal" data-pressure="0.24" type="button">Normal</button>
-              <button class="preset-btn active" data-preset="spike" data-pressure="0.56" type="button">Spike</button>
-              <button class="preset-btn" data-preset="incident" data-pressure="0.9" type="button">Incident</button>
-            </div>
-            <p id="preset-note" class="preset-note">Peak traffic: release decisions need stronger policy correction.</p>
-
-            <section class="tightness-block">
-              <div class="tightness-head">
-                <label for="tightness-slider">Policy strictness</label>
-                <span id="tightness-value" class="tightness-value">62%</span>
-              </div>
-              <input id="tightness-slider" type="range" min="20" max="90" value="62" />
-            </section>
-          </article>
-
-          <article class="control-pane mode-pane">
-            <p class="panel-kicker">View</p>
-            <div class="mode-toggle" role="group" aria-label="Visualization mode">
-              <button class="mode-btn active" data-mode="geometry" type="button">Preview</button>
-              <button class="mode-btn" data-mode="forces" type="button">Forces</button>
-            </div>
-            <button id="replay-button" class="replay-btn" type="button">Replay story</button>
+          <article class="guide-card" aria-live="polite">
+            <p id="guide-step" class="guide-step">NOW: Proposal Intake</p>
+            <p id="guide-title" class="guide-title">SafePatch is reading your raw patch direction.</p>
+            <p id="guide-result" class="guide-result">No release recommendation yet.</p>
           </article>
 
           <article id="decision-panel" class="decision-surface hold">
@@ -119,6 +98,37 @@
           </section>
 
           <section id="force-bars" class="force-bars" aria-label="Constraint correction strengths"></section>
+
+          <details class="manual-controls">
+            <summary>Manual controls</summary>
+
+            <article class="control-pane">
+              <p class="panel-kicker">Scenario</p>
+              <div class="preset-row" role="group" aria-label="Traffic scenario presets">
+                <button class="preset-btn" data-preset="normal" data-pressure="0.24" type="button">Normal</button>
+                <button class="preset-btn active" data-preset="spike" data-pressure="0.56" type="button">Spike</button>
+                <button class="preset-btn" data-preset="incident" data-pressure="0.9" type="button">Incident</button>
+              </div>
+              <p id="preset-note" class="preset-note">Peak traffic: release decisions need stronger policy correction.</p>
+
+              <section class="tightness-block">
+                <div class="tightness-head">
+                  <label for="tightness-slider">Policy strictness</label>
+                  <span id="tightness-value" class="tightness-value">62%</span>
+                </div>
+                <input id="tightness-slider" type="range" min="20" max="90" value="62" />
+              </section>
+            </article>
+
+            <article class="control-pane mode-pane">
+              <p class="panel-kicker">View</p>
+              <div class="mode-toggle" role="group" aria-label="Visualization mode">
+                <button class="mode-btn active" data-mode="geometry" type="button">Preview</button>
+                <button class="mode-btn" data-mode="forces" type="button">Forces</button>
+              </div>
+              <button id="replay-button" class="replay-btn" type="button">Replay story</button>
+            </article>
+          </details>
         </aside>
       </section>
 

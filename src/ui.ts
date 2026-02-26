@@ -39,6 +39,9 @@ export interface OutcomeFrameUi {
   retainedText: string
   readinessText: string
   stageCaption: string
+  guideStep: string
+  guideTitle: string
+  guideResult: string
   storyProgress: number
   storyStep: number
   storyTitle: string
@@ -65,6 +68,9 @@ export class UIController {
   private readonly presetButtons: HTMLButtonElement[]
   private readonly modeButtons: HTMLButtonElement[]
   private readonly sidebar: HTMLElement
+  private readonly guideStep: HTMLElement
+  private readonly guideTitle: HTMLElement
+  private readonly guideResult: HTMLElement
 
   private readonly presetNote: HTMLElement
   private readonly tightnessSlider: HTMLInputElement
@@ -123,6 +129,9 @@ export class UIController {
     }
 
     this.sidebar = this.getElement('sidebar')
+    this.guideStep = this.getElement('guide-step')
+    this.guideTitle = this.getElement('guide-title')
+    this.guideResult = this.getElement('guide-result')
     this.presetNote = this.getElement('preset-note')
     this.tightnessSlider = this.getElement<HTMLInputElement>('tightness-slider')
     this.tightnessValue = this.getElement('tightness-value')
@@ -287,6 +296,9 @@ export class UIController {
     this.retainedValue.textContent = frame.retainedText
     this.readinessNote.textContent = frame.readinessText
     this.stageCaption.textContent = frame.stageCaption
+    this.guideStep.textContent = frame.guideStep
+    this.guideTitle.textContent = frame.guideTitle
+    this.guideResult.textContent = frame.guideResult
 
     this.storyProgressFill.style.width = `${Math.round(Math.min(Math.max(frame.storyProgress, 0), 1) * 100)}%`
     this.storyTitle.textContent = frame.storyTitle

@@ -438,6 +438,9 @@ function buildOutcomeFrame(
   let storyTitle = 'Live simulation mode'
   let storyCause = 'Cause: proposal direction is continuously checked against active guardrails.'
   let storyEffect = `Effect: decision is ${evaluation.decisionTone.toUpperCase()} with updated risk and retention.`
+  let guideStep = 'NOW: Continuous Evaluation'
+  let guideTitle = 'SafePatch is continuously evaluating safety and retained value.'
+  let guideResult = `Current recommendation: ${evaluation.decisionTone.toUpperCase()}.`
   let valueTitle = 'Net release impact'
   let valueMetric = `${Math.round((incidentSafePerHourSafe(evaluation) - incidentRawPerHourSafe(evaluation)) * 10) / 10} /hr delta`
   let valueNote = 'SafePatch compares raw versus certifiable outcomes.'
@@ -446,6 +449,9 @@ function buildOutcomeFrame(
     storyProgress = activeProgress
     if (activeProgress < 0.28) {
       storyStep = 0
+      guideStep = 'NOW: Proposal Intake'
+      guideTitle = 'The raw patch direction is being staged and scored.'
+      guideResult = 'No release decision yet.'
       storyTitle = 'Step 1: propose a patch direction'
       storyCause = 'Cause: raw patch is pointed toward the target fix.'
       storyEffect = 'Effect: system predicts risk before anything ships.'
@@ -454,6 +460,11 @@ function buildOutcomeFrame(
       valueNote = 'No safety correction is applied yet.'
     } else if (activeProgress < 0.46) {
       storyStep = 1
+      guideStep = 'NOW: Violation Detection'
+      guideTitle = dominantLabel
+        ? `Guardrail "${dominantLabel}" is being violated by raw direction.`
+        : 'A release guardrail is being violated by raw direction.'
+      guideResult = 'Raw rollout is blocked until correction.'
       storyTitle = 'Step 2: guardrail violation is detected'
       storyCause = dominantLabel
         ? `Cause: raw direction pushes into "${dominantLabel}".`
@@ -464,6 +475,9 @@ function buildOutcomeFrame(
       valueNote = 'Risk exceeds certified envelope.'
     } else if (activeProgress < 0.72) {
       storyStep = 2
+      guideStep = 'NOW: Safety Projection'
+      guideTitle = 'SafePatch is removing only the unsafe component of the patch.'
+      guideResult = `${Math.round(evaluation.correctionNormRatio * 100)}% movement trimmed to recover safety.`
       storyTitle = 'Step 3: unsafe component is removed'
       storyCause = 'Cause: projection applies correction opposite active guardrails.'
       storyEffect = `Effect: ${Math.round(evaluation.correctionNormRatio * 100)}% of the movement is trimmed to regain safety.`
@@ -472,6 +486,9 @@ function buildOutcomeFrame(
       valueNote = `Still retaining ${Math.round(evaluation.retainedGain * 100)}% intended fix value.`
     } else {
       storyStep = 3
+      guideStep = 'NOW: Release Recommendation'
+      guideTitle = 'Certified direction is complete and policy-compliant.'
+      guideResult = `Recommendation: ${evaluation.decisionTone.toUpperCase()} (${evaluation.readiness}/100 confidence).`
       storyTitle = 'Step 4: certified patch and decision'
       storyCause = `Cause: certified direction satisfies ${evaluation.checksSafePassed}/${evaluation.activeCheckCount} checks.`
       storyEffect = `Effect: release decision becomes ${evaluation.decisionTone.toUpperCase()}.`
@@ -483,6 +500,9 @@ function buildOutcomeFrame(
   } else if (mode === 'forces') {
     storyStep = 2
     storyProgress = 1
+    guideStep = 'NOW: Blocker Inspection'
+    guideTitle = 'Inspecting per-guardrail correction contributions.'
+    guideResult = dominantLabel ? `Top blocker: ${dominantLabel}.` : 'No active blockers right now.'
     storyTitle = 'Forces inspection mode'
     storyCause = 'Cause: each active guardrail contributes a correction force.'
     storyEffect = 'Effect: selecting a bar isolates one blocker contribution on canvas.'
@@ -492,6 +512,9 @@ function buildOutcomeFrame(
   } else if (!dragging) {
     storyStep = 3
     storyProgress = 1
+    guideStep = 'NOW: Ready for Next Patch'
+    guideTitle = 'Current patch is projected and scored.'
+    guideResult = `Recommendation: ${evaluation.decisionTone.toUpperCase()} (${evaluation.readiness}/100 confidence).`
     storyTitle = 'Ready for next proposal'
     storyCause = 'Cause: current direction has already been projected to a safe candidate.'
     storyEffect = 'Effect: drag again to test another patch idea instantly.'
@@ -530,6 +553,9 @@ function buildOutcomeFrame(
     retainedText: `${Math.round(evaluation.retainedGain * 100)}%`,
     readinessText: `Release confidence: ${evaluation.readiness}/100`,
     stageCaption,
+    guideStep,
+    guideTitle,
+    guideResult,
     storyProgress,
     storyStep,
     storyTitle,
