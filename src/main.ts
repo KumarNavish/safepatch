@@ -10,8 +10,8 @@ import type { DetailFrameUi, ForceBarUi, OutcomeFrameUi, PresetId, SceneMode } f
 
 const ETA = 1
 const PROJECTION_TOLERANCE = 1e-6
-const UPDATE_ANIMATION_MS = 300
-const TEACHING_ANIMATION_MS = 1650
+const UPDATE_ANIMATION_MS = 320
+const TEACHING_ANIMATION_MS = 2100
 const MAX_RAW_RADIUS_FACTOR = 1.25
 
 const CONSTRAINT_PALETTE = ['#eb5f82', '#56a7ff', '#5fcf8b', '#f0ad63', '#8f7bea', '#53c6bc']
@@ -368,8 +368,14 @@ function buildOutcomeFrame(
   let stageCaption: string
   if (mode === 'forces') {
     stageCaption = 'Forces view: Δ* = Δ0 + Σ(−η λ n). Click λ bars to isolate each correction term.'
+  } else if (teachingProgress < 0.28) {
+    stageCaption = 'Step 1: Raw patch Δ0 grows from the origin.'
+  } else if (teachingProgress < 0.46) {
+    stageCaption = 'Step 2: Δ0 crosses a guardrail boundary (collision).'
+  } else if (teachingProgress < 0.72) {
+    stageCaption = 'Step 3: Active constraint applies push-back correction.'
   } else if (teachingProgress < 1) {
-    stageCaption = 'Teaching sequence: Δ0 crosses a check, push-back appears, then Δ* lands on the feasible side.'
+    stageCaption = 'Step 4: Corrected patch Δ* lands inside the feasible region.'
   } else if (dragging) {
     stageCaption = 'Dragging Δ0: projection updates continuously as you move the raw patch.'
   } else if (dominantLabel && dominantLambda > PROJECTION_TOLERANCE) {
