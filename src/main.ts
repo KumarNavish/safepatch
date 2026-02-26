@@ -438,6 +438,9 @@ function buildOutcomeFrame(
   let storyTitle = 'Live simulation mode'
   let storyCause = 'Cause: proposal direction is continuously checked against active guardrails.'
   let storyEffect = `Effect: decision is ${evaluation.decisionTone.toUpperCase()} with updated risk and retention.`
+  let valueTitle = 'Net release impact'
+  let valueMetric = `${Math.round((incidentSafePerHourSafe(evaluation) - incidentRawPerHourSafe(evaluation)) * 10) / 10} /hr delta`
+  let valueNote = 'SafePatch compares raw versus certifiable outcomes.'
 
   if (duringStory) {
     storyProgress = activeProgress
@@ -446,6 +449,9 @@ function buildOutcomeFrame(
       storyTitle = 'Step 1: propose a patch direction'
       storyCause = 'Cause: raw patch is pointed toward the target fix.'
       storyEffect = 'Effect: system predicts risk before anything ships.'
+      valueTitle = 'Raw direction under evaluation'
+      valueMetric = `${incidentRawPerHourSafe(evaluation)} /hr projected`
+      valueNote = 'No safety correction is applied yet.'
     } else if (activeProgress < 0.46) {
       storyStep = 1
       storyTitle = 'Step 2: guardrail violation is detected'
@@ -453,16 +459,26 @@ function buildOutcomeFrame(
         ? `Cause: raw direction pushes into "${dominantLabel}".`
         : 'Cause: raw direction crosses a release guardrail.'
       storyEffect = 'Effect: direct ship is blocked and correction is required.'
+      valueTitle = 'Raw direction is unsafe'
+      valueMetric = `${incidentRawPerHourSafe(evaluation)} /hr if shipped raw`
+      valueNote = 'Risk exceeds certified envelope.'
     } else if (activeProgress < 0.72) {
       storyStep = 2
       storyTitle = 'Step 3: unsafe component is removed'
       storyCause = 'Cause: projection applies correction opposite active guardrails.'
       storyEffect = `Effect: ${Math.round(evaluation.correctionNormRatio * 100)}% of the movement is trimmed to regain safety.`
+      valueTitle = 'Safety correction in progress'
+      valueMetric = `${Math.round(evaluation.correctionNormRatio * 100)}% trimmed`
+      valueNote = `Still retaining ${Math.round(evaluation.retainedGain * 100)}% intended fix value.`
     } else {
       storyStep = 3
       storyTitle = 'Step 4: certified patch and decision'
       storyCause = `Cause: certified direction satisfies ${evaluation.checksSafePassed}/${evaluation.activeCheckCount} checks.`
       storyEffect = `Effect: release decision becomes ${evaluation.decisionTone.toUpperCase()}.`
+      const incidentDelta = incidentRawPerHourSafe(evaluation) - incidentSafePerHourSafe(evaluation)
+      valueTitle = 'Certified net outcome'
+      valueMetric = incidentDelta >= 0 ? `${incidentDelta.toFixed(1)} /hr prevented` : `${Math.abs(incidentDelta).toFixed(1)} /hr added`
+      valueNote = `Certified patch keeps ${Math.round(evaluation.retainedGain * 100)}% of intended fix value.`
     }
   } else if (mode === 'forces') {
     storyStep = 2
@@ -470,12 +486,19 @@ function buildOutcomeFrame(
     storyTitle = 'Forces inspection mode'
     storyCause = 'Cause: each active guardrail contributes a correction force.'
     storyEffect = 'Effect: selecting a bar isolates one blocker contribution on canvas.'
+    valueTitle = 'Which blocker matters most?'
+    valueMetric = dominantLabel ? `${dominantLabel}` : 'No active blocker'
+    valueNote = 'Use pressure bars to inspect one correction component at a time.'
   } else if (!dragging) {
     storyStep = 3
     storyProgress = 1
     storyTitle = 'Ready for next proposal'
     storyCause = 'Cause: current direction has already been projected to a safe candidate.'
     storyEffect = 'Effect: drag again to test another patch idea instantly.'
+    const incidentDelta = incidentRawPerHourSafe(evaluation) - incidentSafePerHourSafe(evaluation)
+    valueTitle = 'Current certified outcome'
+    valueMetric = incidentDelta >= 0 ? `${incidentDelta.toFixed(1)} /hr prevented` : `${Math.abs(incidentDelta).toFixed(1)} /hr added`
+    valueNote = `Retains ${Math.round(evaluation.retainedGain * 100)}% of intended fix value.`
   }
 
   let stageCaption: string
@@ -512,10 +535,21 @@ function buildOutcomeFrame(
     storyTitle,
     storyCause,
     storyEffect,
+    valueTitle,
+    valueMetric,
+    valueNote,
     impactCorrectionText: `${Math.round(evaluation.correctionNormRatio * 100)}% trimmed`,
     impactRiskText: incidentDelta >= 0 ? `${Math.abs(incidentDelta)} /hr lower` : `${Math.abs(incidentDelta)} /hr higher`,
     impactBlockerText: evaluation.dominantConstraintLabel ?? 'None',
   }
+}
+
+function incidentRawPerHourSafe(evaluation: Evaluation): number {
+  return Math.max(0, Math.round((evaluation.queueRawPeak / 13) * 10) / 10)
+}
+
+function incidentSafePerHourSafe(evaluation: Evaluation): number {
+  return Math.max(0, Math.round((evaluation.queueSafePeak / 13) * 10) / 10)
 }
 
 function dominantConstraintId(evaluation: Evaluation): string | null {

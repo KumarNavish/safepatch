@@ -44,6 +44,9 @@ export interface OutcomeFrameUi {
   storyTitle: string
   storyCause: string
   storyEffect: string
+  valueTitle: string
+  valueMetric: string
+  valueNote: string
   impactCorrectionText: string
   impactRiskText: string
   impactBlockerText: string
@@ -61,6 +64,7 @@ export interface DetailFrameUi {
 export class UIController {
   private readonly presetButtons: HTMLButtonElement[]
   private readonly modeButtons: HTMLButtonElement[]
+  private readonly sidebar: HTMLElement
 
   private readonly presetNote: HTMLElement
   private readonly tightnessSlider: HTMLInputElement
@@ -88,6 +92,9 @@ export class UIController {
   private readonly storyTitle: HTMLElement
   private readonly storyCause: HTMLElement
   private readonly storyEffect: HTMLElement
+  private readonly valueTitle: HTMLElement
+  private readonly valueMetric: HTMLElement
+  private readonly valueNote: HTMLElement
 
   private readonly whyList: HTMLUListElement
   private readonly actionList: HTMLUListElement
@@ -115,6 +122,7 @@ export class UIController {
       throw new Error('Missing mode buttons')
     }
 
+    this.sidebar = this.getElement('sidebar')
     this.presetNote = this.getElement('preset-note')
     this.tightnessSlider = this.getElement<HTMLInputElement>('tightness-slider')
     this.tightnessValue = this.getElement('tightness-value')
@@ -141,6 +149,9 @@ export class UIController {
     this.storyTitle = this.getElement('story-title')
     this.storyCause = this.getElement('story-cause')
     this.storyEffect = this.getElement('story-effect')
+    this.valueTitle = this.getElement('value-title')
+    this.valueMetric = this.getElement('value-metric')
+    this.valueNote = this.getElement('value-note')
 
     this.whyList = this.getElement<HTMLUListElement>('why-list')
     this.actionList = this.getElement<HTMLUListElement>('action-list')
@@ -281,6 +292,10 @@ export class UIController {
     this.storyTitle.textContent = frame.storyTitle
     this.storyCause.textContent = frame.storyCause
     this.storyEffect.textContent = frame.storyEffect
+    this.valueTitle.textContent = frame.valueTitle
+    this.valueMetric.textContent = frame.valueMetric
+    this.valueNote.textContent = frame.valueNote
+    this.sidebar.dataset.storyStep = `${Math.max(0, Math.min(3, frame.storyStep))}`
 
     for (const stepNode of this.storySteps) {
       const rawStep = Number.parseInt(stepNode.dataset.step ?? '', 10)
