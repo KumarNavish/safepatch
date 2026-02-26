@@ -240,8 +240,8 @@ export class UIController {
   setDragActive(active: boolean): void {
     this.dragHint.classList.toggle('active', active)
     this.dragHint.textContent = active
-      ? 'Dragging proposal: release risk and queue impact are updating live.'
-      : 'Direct manipulation: drag the patch and watch the production outcome update live.'
+      ? 'Dragging candidate patch: SafePatch is recalculating ship/hold in real time.'
+      : 'Direct manipulation: drag the red patch endpoint and watch release impact update instantly.'
   }
 
   renderOutcome(frame: OutcomeFrameUi): void {
@@ -286,6 +286,8 @@ export class UIController {
       return
     }
 
+    const maxLambda = Math.max(...items.map((item) => item.lambda), 1e-6)
+
     const nodes = items.map((item) => {
       const button = document.createElement('button')
       button.type = 'button'
@@ -302,9 +304,18 @@ export class UIController {
 
       const meta = document.createElement('span')
       meta.className = 'force-meta'
-      meta.textContent = item.isVisible ? 'Selected policy' : 'Click to inspect'
+      meta.textContent = item.isVisible ? 'Selected in canvas' : 'Click to inspect in canvas'
 
-      labelWrap.append(name, meta)
+      const meter = document.createElement('span')
+      meter.className = 'force-meter'
+
+      const meterFill = document.createElement('span')
+      meterFill.className = 'force-meter-fill'
+      meterFill.style.background = item.color
+      meterFill.style.width = `${Math.max(8, (item.lambda / maxLambda) * 100).toFixed(1)}%`
+      meter.append(meterFill)
+
+      labelWrap.append(name, meta, meter)
 
       const value = document.createElement('span')
       value.className = 'force-value'

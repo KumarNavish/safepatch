@@ -45,13 +45,13 @@ interface TeachingBeats {
   safe: number
 }
 
-const RAW_COLOR = '#e5484d'
+const RAW_COLOR = '#d64556'
 const SAFE_COLOR = '#1d4ed8'
-const PUSH_COLOR = '#f59f0b'
-const FEASIBLE_FILL = 'rgba(22, 163, 74, 0.10)'
-const FEASIBLE_STROKE = 'rgba(22, 163, 74, 0.54)'
+const PUSH_COLOR = '#f09b26'
+const FEASIBLE_FILL = 'rgba(15, 143, 116, 0.11)'
+const FEASIBLE_STROKE = 'rgba(15, 143, 116, 0.5)'
 const LABEL_BG = 'rgba(255, 255, 255, 0.96)'
-const LABEL_BORDER = 'rgba(173, 188, 209, 0.62)'
+const LABEL_BORDER = 'rgba(177, 193, 216, 0.72)'
 
 function clamp(value: number, min = 0, max = 1): number {
   return Math.min(Math.max(value, min), max)
@@ -97,7 +97,7 @@ export class SceneRenderer {
   private readonly canvas: HTMLCanvasElement
   private readonly ctx: CanvasRenderingContext2D
   private readonly colorById = new Map<string, string>()
-  private readonly palette = ['#0f8f74', '#2b67f6', '#e44f73', '#ea9a2d', '#7c52d8', '#0ea5a4']
+  private readonly palette = ['#ec6b8e', '#3f8bff', '#15a392', '#f4a236', '#7657da', '#0ea5a4']
 
   private mapper: Mapper | null = null
   private labelBoxes: LabelBox[] = []
@@ -148,7 +148,7 @@ export class SceneRenderer {
     }
 
     this.ctx.clearRect(0, 0, width, height)
-    this.drawBackdrop(width, height, input.clockMs)
+    this.drawBackdrop(width, height)
 
     const frame: Rect = {
       x: 10,
@@ -158,9 +158,9 @@ export class SceneRenderer {
     }
 
     this.drawRoundedRect(frame.x, frame.y, frame.width, frame.height, 12)
-    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.94)'
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.96)'
     this.ctx.fill()
-    this.ctx.strokeStyle = 'rgba(194, 207, 226, 0.92)'
+    this.ctx.strokeStyle = 'rgba(198, 211, 229, 0.9)'
     this.ctx.lineWidth = 1
     this.ctx.stroke()
 
@@ -183,7 +183,7 @@ export class SceneRenderer {
     const visibleSet = new Set(input.visibleCorrectionIds)
     const primaryDiagnostic = this.primaryViolatedDiagnostic(input.projection)
 
-    this.drawStageSurface(plotRect, input.clockMs)
+    this.drawStageSurface(plotRect, mapper)
     this.drawFeasibleRegion(activeHalfspaces, mapper)
 
     this.drawBoundaries({
@@ -191,26 +191,19 @@ export class SceneRenderer {
       mapper,
       mode: input.mode,
       activeSet,
-      visibleSet,
       highlightedConstraintId: input.highlightedConstraintId,
       primaryDiagnostic,
       hitBeat: beats.hit,
     })
-
-    if (input.dragActive && input.mode === 'geometry') {
-      this.drawTrails(mapper, input.rawTrail, RAW_COLOR)
-      this.drawTrails(mapper, input.safeTrail, SAFE_COLOR)
-    }
 
     if (input.mode === 'geometry') {
       this.drawGeometryMode({
         projection: input.projection,
         mapper,
         beats,
-        dragActive: input.dragActive,
         teachingMode,
+        dragActive: input.dragActive,
         primaryDiagnostic,
-        pulse: 0.5 + 0.5 * Math.sin(input.clockMs * 0.0052),
       })
     } else {
       this.drawForcesMode({
@@ -219,28 +212,6 @@ export class SceneRenderer {
         visibleSet,
         highlightedConstraintId: input.highlightedConstraintId,
       })
-    }
-
-    this.drawLegend(plotRect, input.mode)
-  }
-
-  private drawTrails(mapper: Mapper, points: Vec2[], color: string): void {
-    if (points.length < 2) {
-      return
-    }
-
-    const start = Math.max(0, points.length - 10)
-    for (let i = start + 1; i < points.length; i += 1) {
-      const alpha = (i - start) / Math.max(1, points.length - start)
-      const from = mapper.worldToCanvas(points[i - 1])
-      const to = mapper.worldToCanvas(points[i])
-      this.ctx.beginPath()
-      this.ctx.moveTo(from.x, from.y)
-      this.ctx.lineTo(to.x, to.y)
-      this.ctx.strokeStyle = withAlpha(color, 0.04 + alpha * 0.1)
-      this.ctx.lineWidth = 0.8 + alpha * 0.8
-      this.ctx.lineCap = 'round'
-      this.ctx.stroke()
     }
   }
 
@@ -258,16 +229,14 @@ export class SceneRenderer {
     }
   }
 
-  private drawBackdrop(width: number, height: number, clockMs: number): void {
+  private drawBackdrop(width: number, height: number): void {
     const gradient = this.ctx.createLinearGradient(0, 0, 0, height)
     gradient.addColorStop(0, '#ffffff')
-    gradient.addColorStop(1, '#f9fbff')
+    gradient.addColorStop(1, '#f8fbff')
     this.ctx.fillStyle = gradient
     this.ctx.fillRect(0, 0, width, height)
 
-    const focusX = width * (0.18 + 0.04 * Math.sin(clockMs * 0.00055))
-    const focusY = height * (0.12 + 0.02 * Math.cos(clockMs * 0.0006))
-    const glow = this.ctx.createRadialGradient(focusX, focusY, 10, focusX, focusY, width * 0.42)
+    const glow = this.ctx.createRadialGradient(width * 0.14, height * 0.08, 10, width * 0.14, height * 0.08, width * 0.5)
     glow.addColorStop(0, 'rgba(29, 78, 216, 0.08)')
     glow.addColorStop(1, 'rgba(29, 78, 216, 0)')
     this.ctx.fillStyle = glow
@@ -276,7 +245,7 @@ export class SceneRenderer {
 
   private createMapper(rect: Rect, halfspaces: Halfspace[]): Mapper {
     const worldRadius = worldBoundsFromHalfspaces(halfspaces)
-    const pad = 26
+    const pad = 28
     const usableWidth = rect.width - pad * 2
     const usableHeight = rect.height - pad * 2
     const scaleFactor = Math.min(usableWidth / (worldRadius * 2), usableHeight / (worldRadius * 2))
@@ -290,58 +259,28 @@ export class SceneRenderer {
     }
   }
 
-  private drawStageSurface(rect: Rect, clockMs: number): void {
+  private drawStageSurface(rect: Rect, mapper: Mapper): void {
     const gradient = this.ctx.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.height)
     gradient.addColorStop(0, '#ffffff')
     gradient.addColorStop(1, '#fbfdff')
     this.ctx.fillStyle = gradient
     this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
 
-    const sweep = ((clockMs * 0.04) % (rect.width + 160)) - 80
-    const beamX = rect.x + sweep
-    const beam = this.ctx.createLinearGradient(beamX - 120, rect.y, beamX + 120, rect.y)
-    beam.addColorStop(0, 'rgba(29, 78, 216, 0)')
-    beam.addColorStop(0.5, 'rgba(29, 78, 216, 0.06)')
-    beam.addColorStop(1, 'rgba(29, 78, 216, 0)')
-    this.ctx.fillStyle = beam
-    this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
+    const center = mapper.center
+    this.ctx.beginPath()
+    this.ctx.moveTo(rect.x, center.y)
+    this.ctx.lineTo(rect.x + rect.width, center.y)
+    this.ctx.moveTo(center.x, rect.y)
+    this.ctx.lineTo(center.x, rect.y + rect.height)
+    this.ctx.strokeStyle = 'rgba(181, 197, 219, 0.34)'
+    this.ctx.lineWidth = 1
+    this.ctx.stroke()
 
     this.ctx.beginPath()
     this.ctx.rect(rect.x, rect.y, rect.width, rect.height)
     this.ctx.strokeStyle = 'rgba(190, 205, 226, 0.86)'
     this.ctx.lineWidth = 1
     this.ctx.stroke()
-  }
-
-  private drawLegend(rect: Rect, mode: SceneMode): void {
-    const items =
-      mode === 'geometry'
-        ? [
-            { label: 'Proposed patch', color: RAW_COLOR },
-            { label: 'Certified patch', color: SAFE_COLOR },
-            { label: 'Policy push-back', color: PUSH_COLOR },
-          ]
-        : [
-            { label: 'Proposed patch', color: RAW_COLOR },
-            { label: 'Total policy correction', color: PUSH_COLOR },
-            { label: 'Certified patch', color: SAFE_COLOR },
-          ]
-
-    let cursorX = rect.x + 10
-    const y = rect.y + 12
-
-    for (const item of items) {
-      this.ctx.beginPath()
-      this.ctx.arc(cursorX, y, 3.2, 0, Math.PI * 2)
-      this.ctx.fillStyle = item.color
-      this.ctx.fill()
-
-      this.ctx.font = '600 10px "IBM Plex Mono", monospace'
-      this.ctx.fillStyle = '#415c7e'
-      this.ctx.fillText(item.label, cursorX + 8, y + 3.5)
-
-      cursorX += this.ctx.measureText(item.label).width + 28
-    }
   }
 
   private drawFeasibleRegion(halfspaces: Halfspace[], mapper: Mapper): void {
@@ -363,10 +302,10 @@ export class SceneRenderer {
     this.ctx.fillStyle = FEASIBLE_FILL
     this.ctx.fill()
     this.ctx.strokeStyle = FEASIBLE_STROKE
-    this.ctx.lineWidth = 1.5
+    this.ctx.lineWidth = 1.4
     this.ctx.stroke()
 
-    const anchor = mapper.worldToCanvas(vec(0.02 * mapper.worldRadius, -0.08 * mapper.worldRadius))
+    const anchor = mapper.worldToCanvas(vec(0.03 * mapper.worldRadius, -0.08 * mapper.worldRadius))
     this.drawLabel({
       anchor,
       text: 'ship-safe zone',
@@ -381,12 +320,11 @@ export class SceneRenderer {
     mapper: Mapper
     mode: SceneMode
     activeSet: Set<string>
-    visibleSet: Set<string>
     highlightedConstraintId: string | null
     primaryDiagnostic: ConstraintDiagnostic | null
     hitBeat: number
   }): void {
-    const span = input.mapper.worldRadius * 1.85
+    const span = input.mapper.worldRadius * 1.9
 
     input.halfspaces.forEach((halfspace, index) => {
       const normal = normalize(halfspace.normal)
@@ -400,36 +338,26 @@ export class SceneRenderer {
       const isPrimary = input.primaryDiagnostic?.id === halfspace.id
       const isHighlighted = input.highlightedConstraintId === halfspace.id
 
-      if (input.mode === 'geometry' && !isPrimary && !isHighlighted) {
-        return
-      }
-
-      if (input.mode === 'forces' && !isHighlighted) {
-        return
-      }
-
-      let stroke = 'rgba(147, 164, 188, 0.34)'
-      let width = 1.1
+      let stroke = 'rgba(147, 164, 188, 0.22)'
+      let width = 1
 
       if (input.mode === 'forces') {
-        if (isActive && input.visibleSet.has(halfspace.id)) {
-          stroke = withAlpha(baseColor, 0.78)
-          width = 2
-        } else if (isActive) {
-          stroke = withAlpha(baseColor, 0.18)
-          width = 1
-        }
-      } else if (isPrimary) {
-        stroke = withAlpha(PUSH_COLOR, 0.5 + input.hitBeat * 0.42)
-        width = 1.3 + input.hitBeat * 1
-      } else if (input.mode === 'geometry') {
-        stroke = 'rgba(143, 161, 186, 0.2)'
+        stroke = 'rgba(147, 164, 188, 0.16)'
         width = 0.95
       }
 
+      if (isActive) {
+        stroke = withAlpha(baseColor, input.mode === 'forces' ? 0.2 : 0.24)
+      }
+
+      if (isPrimary && input.mode === 'geometry') {
+        stroke = withAlpha(PUSH_COLOR, 0.5 + input.hitBeat * 0.4)
+        width = 1.3 + input.hitBeat * 0.8
+      }
+
       if (isHighlighted) {
-        stroke = withAlpha(baseColor, 0.94)
-        width = 2.1
+        stroke = withAlpha(baseColor, 0.95)
+        width = 2.2
       }
 
       this.ctx.beginPath()
@@ -439,7 +367,7 @@ export class SceneRenderer {
       this.ctx.lineWidth = width
       this.ctx.stroke()
 
-      if (input.mode === 'forces' && input.highlightedConstraintId === halfspace.id) {
+      if (isHighlighted) {
         const labelAnchor = input.mapper.worldToCanvas(add(anchor, scale(normal, 0.06 * input.mapper.worldRadius)))
         this.drawLabel({
           anchor: labelAnchor,
@@ -456,81 +384,86 @@ export class SceneRenderer {
     projection: ProjectionResult
     mapper: Mapper
     beats: TeachingBeats
-    dragActive: boolean
     teachingMode: boolean
+    dragActive: boolean
     primaryDiagnostic: ConstraintDiagnostic | null
-    pulse: number
   }): void {
     const originWorld = vec(0, 0)
     const rawWorld = input.projection.step0
     const safeWorld = input.projection.projectedStep
 
     const origin = input.mapper.worldToCanvas(originWorld)
-    const rawVisibleWorld = lerp(originWorld, rawWorld, input.beats.raw)
-    const rawVisible = input.mapper.worldToCanvas(rawVisibleWorld)
+    const rawVisible = input.mapper.worldToCanvas(lerp(originWorld, rawWorld, input.beats.raw))
 
     this.drawArrow(origin, rawVisible, RAW_COLOR, 2.5, false, true)
-    this.drawNode(origin, '#7292b8', 3.8)
+    this.drawNode(origin, '#6f89ad', 3.8)
     this.drawNode(rawVisible, RAW_COLOR, 4)
 
-    let hitCanvas: Vec2 | null = null
-
-    if (input.primaryDiagnostic && input.beats.hit > 0.02) {
+    if (input.primaryDiagnostic && input.beats.hit > 0.04) {
       const boundaryHit = this.boundaryHitPoint(rawWorld, input.primaryDiagnostic)
       if (boundaryHit) {
-        hitCanvas = input.mapper.worldToCanvas(boundaryHit)
+        const hitCanvas = input.mapper.worldToCanvas(boundaryHit)
+        this.drawPulseRing(hitCanvas, PUSH_COLOR, input.beats.hit)
 
-        if (input.teachingMode) {
-          this.drawImpactBurst(hitCanvas, input.beats.hit, input.pulse, PUSH_COLOR)
+        if (input.beats.hit > 0.4) {
           this.drawLabel({
             anchor: hitCanvas,
-            text: 'policy wall',
+            text: 'guardrail hit',
             color: PUSH_COLOR,
             preferredDx: 10,
-            preferredDy: -30,
+            preferredDy: -28,
           })
         }
       }
     }
 
     if (input.beats.correction > 0.02) {
-      const correctionVisible = lerp(rawWorld, safeWorld, input.beats.correction)
-      this.drawArrow(
-        input.mapper.worldToCanvas(rawWorld),
-        input.mapper.worldToCanvas(correctionVisible),
-        PUSH_COLOR,
-        input.teachingMode ? 1.9 : 1.5,
-        false,
-        input.teachingMode,
-      )
+      const correctionVisible = input.mapper.worldToCanvas(lerp(rawWorld, safeWorld, input.beats.correction))
+      this.drawArrow(input.mapper.worldToCanvas(rawWorld), correctionVisible, PUSH_COLOR, 1.8, false, false)
 
-    }
-
-    if (input.beats.safe > 0.02) {
-      const safeVisibleWorld = lerp(originWorld, safeWorld, easeOutBack(input.beats.safe))
-      const safeVisible = input.mapper.worldToCanvas(safeVisibleWorld)
-      this.drawArrow(origin, safeVisible, SAFE_COLOR, 2.6, false, true)
-      this.drawNode(safeVisible, SAFE_COLOR, 4)
-      if (input.teachingMode && input.beats.safe > 0.8) {
-        this.drawApprovalBadge(safeVisible, (input.beats.safe - 0.8) / 0.2)
+      if (input.beats.correction > 0.55) {
+        this.drawLabel({
+          anchor: lerp(input.mapper.worldToCanvas(rawWorld), correctionVisible, 0.5),
+          text: 'safety correction',
+          color: PUSH_COLOR,
+          preferredDx: 10,
+          preferredDy: -16,
+        })
       }
     }
 
-    this.drawLabel({
-      anchor: input.mapper.worldToCanvas(rawWorld),
-      text: 'proposed patch',
-      color: RAW_COLOR,
-      preferredDx: 10,
-      preferredDy: 10,
-    })
+    if (input.beats.safe > 0.02) {
+      const safeVisible = input.mapper.worldToCanvas(lerp(originWorld, safeWorld, easeOutBack(input.beats.safe)))
+      this.drawArrow(origin, safeVisible, SAFE_COLOR, 2.6, false, true)
+      this.drawNode(safeVisible, SAFE_COLOR, 4)
+    }
 
-    this.drawLabel({
-      anchor: input.mapper.worldToCanvas(safeWorld),
-      text: 'certified patch',
-      color: SAFE_COLOR,
-      preferredDx: 10,
-      preferredDy: -18,
-    })
+    const rawTip = input.mapper.worldToCanvas(rawWorld)
+    const safeTip = input.mapper.worldToCanvas(safeWorld)
+
+    if (!input.dragActive) {
+      this.drawHandleHint(rawTip)
+    }
+
+    if (input.beats.raw > 0.7 || !input.teachingMode) {
+      this.drawLabel({
+        anchor: rawTip,
+        text: 'proposed patch',
+        color: RAW_COLOR,
+        preferredDx: 10,
+        preferredDy: 12,
+      })
+    }
+
+    if (input.beats.safe > 0.62 || !input.teachingMode) {
+      this.drawLabel({
+        anchor: safeTip,
+        text: 'certified patch',
+        color: SAFE_COLOR,
+        preferredDx: 10,
+        preferredDy: -18,
+      })
+    }
   }
 
   private drawForcesMode(input: {
@@ -544,22 +477,28 @@ export class SceneRenderer {
     const safeTip = input.mapper.worldToCanvas(input.projection.projectedStep)
 
     this.drawArrow(origin, rawTip, RAW_COLOR, 2.3, false, true)
-    this.drawNode(origin, '#7292b8', 3.8)
-    this.drawNode(rawTip, RAW_COLOR, 4)
-    this.drawArrow(rawTip, safeTip, PUSH_COLOR, 2, false, true)
+    this.drawArrow(rawTip, safeTip, PUSH_COLOR, 1.9, false, false)
     this.drawArrow(origin, safeTip, SAFE_COLOR, 2.6, false, true)
+
+    this.drawNode(origin, '#6f89ad', 3.8)
+    this.drawNode(rawTip, RAW_COLOR, 4)
     this.drawNode(safeTip, SAFE_COLOR, 4)
 
     const selectedId = input.highlightedConstraintId
     if (selectedId && input.visibleSet.has(selectedId)) {
       const lambda = input.projection.lambdaById[selectedId] ?? 0
-      const color = this.colorForConstraint(selectedId)
-      if (lambda > 1e-6) {
+      const correction = input.projection.correctionById[selectedId]
+      if (lambda > 1e-6 && correction) {
+        const selectedColor = this.colorForConstraint(selectedId)
+        const correctionTip = input.mapper.worldToCanvas(add(input.projection.step0, correction))
+        this.drawArrow(rawTip, correctionTip, selectedColor, 2.2, false, false)
+
+        const selectedLabel = input.projection.diagnostics.find((diagnostic) => diagnostic.id === selectedId)?.label ?? selectedId
         this.drawLabel({
-          anchor: lerp(rawTip, safeTip, 0.5),
-          text: `selected policy pressure ${lambda.toFixed(3)}`,
-          color,
-          preferredDx: 8,
+          anchor: lerp(rawTip, correctionTip, 0.5),
+          text: `${selectedLabel} (lambda ${lambda.toFixed(3)})`,
+          color: selectedColor,
+          preferredDx: 10,
           preferredDy: -20,
         })
       }
@@ -582,57 +521,34 @@ export class SceneRenderer {
     })
   }
 
-  private drawImpactBurst(center: Vec2, hitBeat: number, pulse: number, color: string): void {
-    const intensity = easeOutCubic(hitBeat)
-    const maxRadius = 8 + intensity * 12 + pulse * 2
+  private drawPulseRing(center: Vec2, color: string, progress: number): void {
+    const intensity = easeOutCubic(progress)
+    const radius = 9 + intensity * 11
 
-    for (let i = 0; i < 3; i += 1) {
-      const phase = i / 3
-      const radius = maxRadius * (0.55 + phase * 0.45)
-      this.ctx.beginPath()
-      this.ctx.arc(center.x, center.y, radius, 0, Math.PI * 2)
-      this.ctx.strokeStyle = withAlpha(color, 0.24 - phase * 0.08)
-      this.ctx.lineWidth = 1.2 - phase * 0.3
-      this.ctx.stroke()
-    }
+    this.ctx.beginPath()
+    this.ctx.arc(center.x, center.y, radius, 0, Math.PI * 2)
+    this.ctx.strokeStyle = withAlpha(color, 0.33 - intensity * 0.14)
+    this.ctx.lineWidth = 1.5
+    this.ctx.stroke()
 
-    const rayLength = 8 + intensity * 9
-    for (let ray = 0; ray < 6; ray += 1) {
-      const angle = (Math.PI * 2 * ray) / 6 + pulse * 0.15
-      this.ctx.beginPath()
-      this.ctx.moveTo(center.x + Math.cos(angle) * 4, center.y + Math.sin(angle) * 4)
-      this.ctx.lineTo(center.x + Math.cos(angle) * rayLength, center.y + Math.sin(angle) * rayLength)
-      this.ctx.strokeStyle = withAlpha(color, 0.2)
-      this.ctx.lineWidth = 1
-      this.ctx.stroke()
-    }
+    this.ctx.beginPath()
+    this.ctx.arc(center.x, center.y, 4.2, 0, Math.PI * 2)
+    this.ctx.fillStyle = withAlpha(color, 0.25)
+    this.ctx.fill()
   }
 
-  private drawApprovalBadge(anchor: Vec2, alpha: number): void {
-    const opacity = clamp(alpha)
-    if (opacity <= 0.01) {
-      return
-    }
-
-    const x = anchor.x + 18
-    const y = anchor.y - 18
-    this.drawRoundedRect(x - 11, y - 9, 22, 18, 6)
-    this.ctx.fillStyle = `rgba(15, 143, 116, ${0.16 * opacity})`
-    this.ctx.fill()
-    this.ctx.strokeStyle = `rgba(15, 143, 116, ${0.6 * opacity})`
+  private drawHandleHint(point: Vec2): void {
+    this.ctx.beginPath()
+    this.ctx.arc(point.x, point.y, 11, 0, Math.PI * 2)
+    this.ctx.strokeStyle = withAlpha(RAW_COLOR, 0.22)
     this.ctx.lineWidth = 1
     this.ctx.stroke()
 
-    this.ctx.save()
-    this.ctx.strokeStyle = `rgba(15, 143, 116, ${0.92 * opacity})`
-    this.ctx.lineWidth = 1.8
-    this.ctx.lineCap = 'round'
     this.ctx.beginPath()
-    this.ctx.moveTo(x - 4.5, y + 0.5)
-    this.ctx.lineTo(x - 1, y + 4)
-    this.ctx.lineTo(x + 5, y - 3)
+    this.ctx.arc(point.x, point.y, 16, 0, Math.PI * 2)
+    this.ctx.strokeStyle = withAlpha(RAW_COLOR, 0.12)
+    this.ctx.lineWidth = 1
     this.ctx.stroke()
-    this.ctx.restore()
   }
 
   private drawArrow(from: Vec2, to: Vec2, color: string, width: number, dashed: boolean, glow: boolean): void {
@@ -653,8 +569,8 @@ export class SceneRenderer {
       this.ctx.beginPath()
       this.ctx.moveTo(from.x, from.y)
       this.ctx.lineTo(to.x, to.y)
-      this.ctx.strokeStyle = withAlpha(color, 0.14)
-      this.ctx.lineWidth = width + 3.2
+      this.ctx.strokeStyle = withAlpha(color, 0.15)
+      this.ctx.lineWidth = width + 3
       this.ctx.lineCap = 'round'
       this.ctx.stroke()
     }
@@ -684,8 +600,8 @@ export class SceneRenderer {
     this.ctx.fill()
 
     this.ctx.beginPath()
-    this.ctx.arc(point.x, point.y, radius + 3.5, 0, Math.PI * 2)
-    this.ctx.strokeStyle = withAlpha(color, 0.24)
+    this.ctx.arc(point.x, point.y, radius + 3.2, 0, Math.PI * 2)
+    this.ctx.strokeStyle = withAlpha(color, 0.22)
     this.ctx.lineWidth = 1
     this.ctx.stroke()
   }
@@ -708,8 +624,8 @@ export class SceneRenderer {
       { dx: input.preferredDx, dy: input.preferredDy + 18 },
       { dx: input.preferredDx + 18, dy: input.preferredDy },
       { dx: input.preferredDx - 18, dy: input.preferredDy },
-      { dx: input.preferredDx + 24, dy: input.preferredDy - 14 },
-      { dx: input.preferredDx - 24, dy: input.preferredDy + 14 },
+      { dx: input.preferredDx + 22, dy: input.preferredDy - 14 },
+      { dx: input.preferredDx - 22, dy: input.preferredDy + 14 },
     ]
 
     let chosen: LabelBox | null = null
