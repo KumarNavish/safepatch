@@ -338,12 +338,20 @@ export class SceneRenderer {
       const isPrimary = input.primaryDiagnostic?.id === halfspace.id
       const isHighlighted = input.highlightedConstraintId === halfspace.id
 
+      if (input.mode === 'geometry' && !isPrimary && !isHighlighted) {
+        return
+      }
+
+      if (input.mode === 'forces' && !isHighlighted) {
+        return
+      }
+
       let stroke = 'rgba(147, 164, 188, 0.22)'
       let width = 1
 
       if (input.mode === 'forces') {
-        stroke = 'rgba(147, 164, 188, 0.16)'
-        width = 0.95
+        stroke = withAlpha(baseColor, 0.94)
+        width = 2
       }
 
       if (isActive) {
@@ -496,7 +504,7 @@ export class SceneRenderer {
         const selectedLabel = input.projection.diagnostics.find((diagnostic) => diagnostic.id === selectedId)?.label ?? selectedId
         this.drawLabel({
           anchor: lerp(rawTip, correctionTip, 0.5),
-          text: `${selectedLabel} (lambda ${lambda.toFixed(3)})`,
+          text: `${selectedLabel} (pressure ${lambda.toFixed(3)})`,
           color: selectedColor,
           preferredDx: 10,
           preferredDy: -20,

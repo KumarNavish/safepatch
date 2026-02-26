@@ -240,8 +240,8 @@ export class UIController {
   setDragActive(active: boolean): void {
     this.dragHint.classList.toggle('active', active)
     this.dragHint.textContent = active
-      ? 'Dragging candidate patch: SafePatch is recalculating ship/hold in real time.'
-      : 'Direct manipulation: drag the red patch endpoint and watch release impact update instantly.'
+      ? 'Dragging proposal: ship and hold decision is updating live.'
+      : 'Drag the red patch endpoint. SafePatch updates the safe patch and decision instantly.'
   }
 
   renderOutcome(frame: OutcomeFrameUi): void {
@@ -304,7 +304,7 @@ export class UIController {
 
       const meta = document.createElement('span')
       meta.className = 'force-meta'
-      meta.textContent = item.isVisible ? 'Selected in canvas' : 'Click to inspect in canvas'
+      meta.textContent = item.isVisible ? 'Visible in canvas' : 'Click to inspect'
 
       const meter = document.createElement('span')
       meter.className = 'force-meter'

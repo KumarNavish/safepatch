@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="SafePatch lets release teams drag a candidate hotfix direction and instantly see the safest certifiable version, policy blockers, and ship/hold decision."
+      content="SafePatch helps release teams test a hotfix direction by drag-and-drop and instantly get a certifiable patch, blocker reason, and ship or hold decision."
     />
     <title>SafePatch | Release Decision Studio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -19,38 +19,33 @@
   <body>
     <main class="app-shell">
       <header class="hero">
-        <p class="eyebrow">SafePatch Release Control</p>
-        <h1>Ship faster without shipping unsafe patches.</h1>
+        <p class="eyebrow">SafePatch</p>
+        <h1>Will this hotfix ship safely?</h1>
         <p class="hero-copy">
-          Teams propose a hotfix direction that looks good locally but can violate production guardrails. SafePatch keeps as
-          much of that fix as possible, removes only the unsafe component, and returns a clear ship/hold decision.
+          Drag the red proposal. SafePatch immediately returns the nearest certifiable blue patch and explains whether you
+          should ship or hold.
         </p>
-        <div class="hero-points" aria-label="What SafePatch does">
-          <p><strong>Problem:</strong> raw hotfix directions can spike incidents.</p>
-          <p><strong>Method:</strong> project to nearest guardrail-safe direction.</p>
-          <p><strong>Value:</strong> instant decision with actionable blocker reason.</p>
-        </div>
       </header>
 
-      <section class="workspace" aria-label="Release workspace">
-        <div class="workflow-bar">
-          <div class="workflow-intro">
-            <p class="workflow-title">How to use</p>
-            <p class="workflow-copy">Choose traffic context, drag the red patch, then read the certified blue outcome.</p>
+      <section class="product-shell" aria-label="SafePatch studio">
+        <section class="stage-card" aria-label="Interactive projection stage">
+          <div class="stage-top">
+            <p id="stage-caption" class="stage-caption">
+              Drag the red endpoint. Blue updates continuously to the certifiable release direction.
+            </p>
+            <div class="stage-key" aria-label="Canvas legend">
+              <span class="key-item"><i class="key-dot proposed"></i>Proposed</span>
+              <span class="key-item"><i class="key-dot correction"></i>Correction</span>
+              <span class="key-item"><i class="key-dot certified"></i>Certified</span>
+            </div>
           </div>
-          <div class="workflow-steps" role="list" aria-label="Workflow steps">
-            <span class="workflow-step" role="listitem">1. Scenario</span>
-            <span class="workflow-step" role="listitem">2. Drag proposal</span>
-            <span class="workflow-step" role="listitem">3. Review certified patch</span>
-          </div>
-          <div class="stage-key" aria-label="Canvas legend">
-            <span class="key-item"><i class="key-dot proposed"></i>Proposed</span>
-            <span class="key-item"><i class="key-dot correction"></i>Correction</span>
-            <span class="key-item"><i class="key-dot certified"></i>Certified</span>
-          </div>
-        </div>
 
-        <section class="control-ribbon" aria-label="Simulation controls">
+          <canvas id="scene-canvas" class="scene-canvas" aria-label="Patch proposal and policy correction visualization"></canvas>
+
+          <p id="drag-hint" class="drag-hint">Drag the red patch endpoint to simulate a real release proposal.</p>
+        </section>
+
+        <aside class="sidebar" aria-label="Decision and controls">
           <article class="control-pane">
             <p class="panel-kicker">Traffic Condition</p>
             <div class="preset-row" role="group" aria-label="Traffic scenario presets">
@@ -59,10 +54,7 @@
               <button class="preset-btn" data-preset="incident" data-pressure="0.9" type="button">Live Incident</button>
             </div>
             <p id="preset-note" class="preset-note">Peak traffic: release decisions need stronger policy correction.</p>
-          </article>
 
-          <article class="control-pane">
-            <p class="panel-kicker">Risk Tolerance</p>
             <section class="tightness-block">
               <div class="tightness-head">
                 <label for="tightness-slider">Policy strictness</label>
@@ -72,34 +64,39 @@
             </section>
           </article>
 
-          <article class="control-pane action-pane">
-            <p class="panel-kicker">View</p>
-            <div class="mode-toggle" role="group" aria-label="Visualization mode">
-              <button class="mode-btn active" data-mode="geometry" type="button">Release Preview</button>
-              <button class="mode-btn" data-mode="forces" type="button">Policy Forces</button>
-            </div>
-            <button id="replay-button" class="replay-btn" type="button">Replay onboarding</button>
+          <article id="decision-panel" class="decision-surface hold">
+            <p id="decision-pill" class="decision-pill hold">HOLD</p>
+            <h2 id="decision-title">Hold: current direction is unsafe</h2>
+            <p id="decision-detail">Adjust the patch direction until all policies pass with acceptable rollout impact.</p>
           </article>
-        </section>
 
-        <section class="stage-card" aria-label="SafePatch interaction stage">
-          <div class="stage-header">
-            <p id="stage-caption" class="stage-caption">
-              Drag the red candidate patch. SafePatch continuously returns the nearest certifiable release direction.
-            </p>
-          </div>
+          <section class="metric-grid" aria-label="Key metrics">
+            <article class="metric-card">
+              <p class="metric-label">Policies Passed</p>
+              <strong id="checks-passed" class="metric-value">--</strong>
+              <p id="readiness-note" class="metric-note">Release confidence: --</p>
+            </article>
 
-          <canvas id="scene-canvas" class="scene-canvas" aria-label="Patch proposal stage and policy correction view"></canvas>
+            <article class="metric-card">
+              <p class="metric-label">Incident Forecast</p>
+              <strong id="queue-peak" class="metric-value">--</strong>
+              <p class="metric-note">Raw vs certified</p>
+            </article>
 
-          <p id="drag-hint" class="drag-hint">Direct manipulation: drag the red patch endpoint to simulate a real release proposal.</p>
+            <article class="metric-card">
+              <p class="metric-label">Fix Value Retained</p>
+              <strong id="retained-value" class="metric-value">--</strong>
+              <p class="metric-note">Benefit kept after safety correction</p>
+            </article>
+          </section>
 
-          <section class="impact-strip" aria-label="Immediate interaction impact">
+          <section class="impact-strip" aria-label="Immediate impact">
             <article class="impact-card">
               <p class="impact-label">Patch Trimmed</p>
               <strong id="impact-correction" class="impact-value">--</strong>
             </article>
             <article class="impact-card">
-              <p class="impact-label">Incidents Avoided</p>
+              <p class="impact-label">Incidents Delta</p>
               <strong id="impact-risk" class="impact-value">--</strong>
             </article>
             <article class="impact-card">
@@ -108,34 +105,17 @@
             </article>
           </section>
 
+          <article class="control-pane mode-pane">
+            <p class="panel-kicker">View</p>
+            <div class="mode-toggle" role="group" aria-label="Visualization mode">
+              <button class="mode-btn active" data-mode="geometry" type="button">Release Preview</button>
+              <button class="mode-btn" data-mode="forces" type="button">Policy Forces</button>
+            </div>
+            <button id="replay-button" class="replay-btn" type="button">Replay onboarding</button>
+          </article>
+
           <section id="force-bars" class="force-bars" aria-label="Constraint correction strengths"></section>
-        </section>
-
-        <section class="outcome-strip" aria-label="Decision outcome">
-          <article id="decision-panel" class="outcome-card decision-card hold">
-            <p id="decision-pill" class="decision-pill hold">HOLD</p>
-            <h2 id="decision-title">Hold: current direction is unsafe</h2>
-            <p id="decision-detail">Adjust the patch direction until all policies pass with acceptable rollout impact.</p>
-          </article>
-
-          <article class="outcome-card">
-            <p class="metric-label">Policies Passed</p>
-            <strong id="checks-passed" class="metric-value">--</strong>
-            <p id="readiness-note" class="metric-note">Release confidence: --</p>
-          </article>
-
-          <article class="outcome-card">
-            <p class="metric-label">Incident Forecast</p>
-            <strong id="queue-peak" class="metric-value">--</strong>
-            <p class="metric-note">Proposed -> Certified</p>
-          </article>
-
-          <article class="outcome-card">
-            <p class="metric-label">Fix Value Retained</p>
-            <strong id="retained-value" class="metric-value">--</strong>
-            <p class="metric-note">Useful gain preserved after safety trim</p>
-          </article>
-        </section>
+        </aside>
       </section>
 
       <details class="details-panel">
@@ -171,7 +151,7 @@
           <div id="equation-main" class="equation"></div>
           <div id="equation-sub" class="equation equation-sub"></div>
           <div id="equation-terms" class="equation-terms"></div>
-          <p class="math-note">Each active term maps to one policy correction in Policy Forces view.</p>
+          <p class="math-note">Each active term maps to one correction vector in Policy Forces view.</p>
         </section>
       </details>
     </main>

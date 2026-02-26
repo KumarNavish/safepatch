@@ -432,15 +432,15 @@ function buildOutcomeFrame(
 
   let stageCaption: string
   if (mode === 'forces') {
-    stageCaption = 'Policy Forces: click a pressure bar to see how that single guardrail bends the proposal.'
+    stageCaption = 'Policy Forces: inspect one active blocker and how much it bends the proposal.'
   } else if (teachingProgress < 0.28) {
-    stageCaption = 'Step 1: propose a release direction.'
+    stageCaption = 'Step 1: propose a patch direction.'
   } else if (teachingProgress < 0.46) {
-    stageCaption = 'Step 2: the proposed direction hits a guardrail.'
+    stageCaption = 'Step 2: proposal crosses a release guardrail.'
   } else if (teachingProgress < 0.72) {
-    stageCaption = 'Step 3: SafePatch injects a correction force from active policies.'
+    stageCaption = 'Step 3: SafePatch removes only the unsafe component.'
   } else if (teachingProgress < 1) {
-    stageCaption = 'Step 4: certified direction lands inside the ship-safe zone.'
+    stageCaption = 'Step 4: certified patch lands in the ship-safe zone.'
   } else if (dragging) {
     const incidentDelta = Math.round((evaluation.queuePeakDelta / 13) * 10) / 10
     const queueNarrative =
@@ -449,9 +449,9 @@ function buildOutcomeFrame(
       evaluation.correctionNormRatio * 100,
     )}%.`
   } else if (dominantLabel && dominantLambda > PROJECTION_TOLERANCE) {
-    stageCaption = `Current top blocker: ${dominantLabel} (pressure ${dominantLambda.toFixed(3)}).`
+    stageCaption = `Top blocker: ${dominantLabel} (pressure ${dominantLambda.toFixed(3)}).`
   } else {
-    stageCaption = 'Red is your proposal. Blue is the certifiable direction SafePatch would actually ship.'
+    stageCaption = 'Red is your proposal. Blue is the version that can be safely shipped.'
   }
 
   const incidentRawPerHour = Math.max(0, Math.round((evaluation.queueRawPeak / 13) * 10) / 10)
@@ -462,16 +462,14 @@ function buildOutcomeFrame(
     decisionTone: evaluation.decisionTone,
     decisionTitle: evaluation.decisionTitle,
     decisionDetail: evaluation.decisionDetail,
-    checksText: `${evaluation.checksRawPassed}/${evaluation.activeCheckCount} -> ${evaluation.checksSafePassed}/${
-      evaluation.activeCheckCount
-    }`,
-    queueText: `${incidentRawPerHour} \u2192 ${incidentSafePerHour} /hr`,
+    checksText: `${evaluation.checksSafePassed}/${evaluation.activeCheckCount} certified`,
+    queueText: `${incidentSafePerHour}/hr (raw ${incidentRawPerHour}/hr)`,
     retainedText: `${Math.round(evaluation.retainedGain * 100)}%`,
     readinessText: `Release confidence: ${evaluation.readiness}/100`,
     stageCaption,
-    impactCorrectionText: `${Math.round(evaluation.correctionNormRatio * 100)}%`,
-    impactRiskText: incidentDelta >= 0 ? `\u2212${Math.abs(incidentDelta)} /hr` : `+${Math.abs(incidentDelta)} /hr`,
-    impactBlockerText: evaluation.dominantConstraintLabel ?? 'No blocking policy',
+    impactCorrectionText: `${Math.round(evaluation.correctionNormRatio * 100)}% trimmed`,
+    impactRiskText: incidentDelta >= 0 ? `${Math.abs(incidentDelta)} /hr lower` : `${Math.abs(incidentDelta)} /hr higher`,
+    impactBlockerText: evaluation.dominantConstraintLabel ?? 'None',
   }
 }
 
