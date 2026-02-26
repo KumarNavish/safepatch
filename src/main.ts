@@ -7,7 +7,7 @@ import { SceneRenderer } from './render'
 import { UIController } from './ui'
 import type { ProofFrameUi } from './ui'
 
-const TRANSITION_MS = 1120
+const TRANSITION_MS = 4200
 const PROJECTION_TOLERANCE = 1e-6
 const OVERLOAD_THRESHOLD = 520
 
@@ -670,8 +670,8 @@ function toFrameUi(current: ScenarioEvaluation, strategyPack: StrategyPack, guid
 
   const stageCaptionText =
     current.violatedRaw > 0
-      ? `Raw patch fails ${current.violatedRaw} check(s). SafePatch projects to ${safePassed}/${activeChecks} checks passed.`
-      : `Raw patch is already feasible. SafePatch confirms ${safePassed}/${activeChecks} checks passed.`
+      ? `Raw step fails ${current.violatedRaw} check(s) -> projection reaches ${safePassed}/${activeChecks} checks passed.`
+      : `Raw step is already feasible -> SafePatch confirms ${safePassed}/${activeChecks} checks passed.`
 
   return {
     decisionTone: strategyPack.decisionTone,

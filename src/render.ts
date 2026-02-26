@@ -37,12 +37,12 @@ export interface SceneRenderInput {
   activeSetIds: string[]
 }
 
-const RAW_COLOR = '#ff6b88'
-const SAFE_COLOR = '#59d4ff'
-const ZONE_COLOR = '#43d2a0'
-const BRIDGE_COLOR = '#ffd27a'
-const VIOLATION_COLOR = '#ff8ea4'
-const GRID_STROKE = 'rgba(134, 168, 208, 0.2)'
+const RAW_COLOR = '#df5b77'
+const SAFE_COLOR = '#2f77ea'
+const WARN_COLOR = '#e7944d'
+const PANEL_STROKE = 'rgba(123, 151, 186, 0.55)'
+const GRID_STROKE = 'rgba(128, 156, 192, 0.2)'
+const FEASIBLE_COLOR = 'rgba(56, 151, 113, 0.15)'
 
 function clamp(value: number, min = 0, max = 1): number {
   return Math.min(Math.max(value, min), max)
@@ -56,6 +56,13 @@ function easeOutCubic(value: number): number {
 function easeInOutCubic(value: number): number {
   const t = clamp(value)
   return t < 0.5 ? 4 * t * t * t : 1 - ((-2 * t + 2) ** 3) / 2
+}
+
+function easeOutBack(value: number): number {
+  const t = clamp(value)
+  const c1 = 1.70158
+  const c3 = c1 + 1
+  return 1 + c3 * (t - 1) ** 3 + c1 * (t - 1) ** 2
 }
 
 function phaseWindow(progress: number, start: number, end: number): number {
@@ -75,8 +82,8 @@ function withAlpha(hex: string, alpha: number): string {
 }
 
 function shortLabel(text: string): string {
-  const head = text.trim().split(' ')[0] ?? ''
-  return head.length > 8 ? `${head.slice(0, 7)}.` : head
+  const first = text.trim().split(' ')[0] ?? ''
+  return first.length > 8 ? `${first.slice(0, 7)}.` : first
 }
 
 export class SceneRenderer {
@@ -108,304 +115,408 @@ export class SceneRenderer {
     }
 
     const timeline = clamp(input.transitionProgress)
-    const phaseRaw = easeOutCubic(phaseWindow(timeline, 0, 0.26))
-    const phaseViolation = easeOutCubic(phaseWindow(timeline, 0.2, 0.44))
-    const phaseProject = easeInOutCubic(phaseWindow(timeline, 0.36, 0.72))
-    const phaseQueue = easeInOutCubic(phaseWindow(timeline, 0.66, 1))
-    const pulse = 0.5 + 0.5 * Math.sin(input.clockMs * 0.002)
+    const phaseRaw = easeOutCubic(phaseWindow(timeline, 0, 0.24))
+    const phaseHit = easeOutCubic(phaseWindow(timeline, 0.24, 0.48))
+    const phaseSnap = easeOutCubic(phaseWindow(timeline, 0.48, 0.76))
+    const phaseBars = easeOutCubic(phaseWindow(timeline, 0.68, 0.9))
+    const phaseQueue = easeInOutCubic(phaseWindow(timeline, 0.76, 1))
+    const pulse = 0.5 + 0.5 * Math.sin(input.clockMs * 0.0019)
 
     this.ctx.clearRect(0, 0, width, height)
-    this.drawBackdrop(width, height, input.clockMs, phaseQueue)
+    this.drawBackdrop(width, height)
 
-    const margin = 16
-    const gap = 12
-    const stacked = width < 980
+    const frame: Rect = {
+      x: 16,
+      y: 16,
+      width: width - 32,
+      height: height - 32,
+    }
 
-    let geometryPanel: Rect
-    let queuePanel: Rect
+    this.drawFrameChrome(frame)
 
-    if (stacked) {
-      const topHeight = Math.max(225, Math.round((height - margin * 2 - gap) * 0.47))
-      geometryPanel = {
-        x: margin,
-        y: margin,
-        width: width - margin * 2,
-        height: topHeight,
+    const content: Rect = {
+      x: frame.x + 12,
+      y: frame.y + 52,
+      width: frame.width - 24,
+      height: frame.height - 64,
+    }
+
+    let geometryRect: Rect
+    let barsRect: Rect
+    let queueRect: Rect
+
+    if (content.width < 920) {
+      const geomHeight = Math.max(180, Math.round(content.height * 0.6))
+      geometryRect = {
+        x: content.x,
+        y: content.y,
+        width: content.width,
+        height: geomHeight,
       }
-      queuePanel = {
-        x: margin,
-        y: geometryPanel.y + geometryPanel.height + gap,
-        width: width - margin * 2,
-        height: height - margin * 2 - topHeight - gap,
+      const lowerRect: Rect = {
+        x: content.x,
+        y: geometryRect.y + geometryRect.height + 10,
+        width: content.width,
+        height: content.height - geomHeight - 10,
+      }
+      const barsHeight = Math.max(84, Math.round(lowerRect.height * 0.44))
+      barsRect = {
+        x: lowerRect.x,
+        y: lowerRect.y,
+        width: lowerRect.width,
+        height: barsHeight,
+      }
+      queueRect = {
+        x: lowerRect.x,
+        y: barsRect.y + barsRect.height + 10,
+        width: lowerRect.width,
+        height: lowerRect.height - barsHeight - 10,
       }
     } else {
-      const leftWidth = Math.round((width - margin * 2 - gap) * 0.48)
-      geometryPanel = {
-        x: margin,
-        y: margin,
-        width: leftWidth,
-        height: height - margin * 2,
+      const geomWidth = Math.round(content.width * 0.7)
+      geometryRect = {
+        x: content.x,
+        y: content.y,
+        width: geomWidth,
+        height: content.height,
       }
-      queuePanel = {
-        x: margin + leftWidth + gap,
-        y: margin,
-        width: width - margin * 2 - leftWidth - gap,
-        height: height - margin * 2,
+      const sideRect: Rect = {
+        x: geometryRect.x + geometryRect.width + 10,
+        y: content.y,
+        width: content.width - geomWidth - 10,
+        height: content.height,
+      }
+      const barsHeight = Math.max(120, Math.round(sideRect.height * 0.38))
+      barsRect = {
+        x: sideRect.x,
+        y: sideRect.y,
+        width: sideRect.width,
+        height: barsHeight,
+      }
+      queueRect = {
+        x: sideRect.x,
+        y: barsRect.y + barsRect.height + 10,
+        width: sideRect.width,
+        height: sideRect.height - barsHeight - 10,
       }
     }
 
     const queueLength = Math.min(input.queueRawSeries.length, input.queueSafeSeries.length)
     const rawSeries = input.queueRawSeries.slice(0, queueLength)
-    const safeTarget = input.queueSafeSeries.slice(0, queueLength)
-    const safeAnimated = rawSeries.map((value, index) => value + (safeTarget[index] - value) * phaseQueue)
+    const safeSeries = input.queueSafeSeries.slice(0, queueLength)
 
-    const geometrySubtitle =
-      phaseProject < 0.1
-        ? '1) raw step'
-        : phaseProject < 0.95
-          ? '2) projection to nearest feasible step'
-          : '3) safe step'
-
-    const queueSubtitle = phaseQueue < 0.12 ? 'queue replay queued' : 'queue replay under identical traffic'
-
-    this.drawPanelChrome(geometryPanel, 'PATCH SPACE', geometrySubtitle, phaseProject)
-    this.drawPanelChrome(queuePanel, 'QUEUE IMPACT', queueSubtitle, phaseQueue)
-
-    this.drawGeometryPanel(
-      geometryPanel,
+    this.drawGeometryStage(
+      geometryRect,
       input.halfspaces,
       input.step0,
       input.projectedStep,
       input.gradient,
       input.constraintDiagnostics,
-      input.activeSetIds,
       phaseRaw,
-      phaseViolation,
-      phaseProject,
+      phaseHit,
+      phaseSnap,
       pulse,
     )
 
-    this.drawQueuePanel(queuePanel, rawSeries, safeAnimated, input.overloadThreshold, phaseQueue, pulse)
+    this.drawPressureWidget(barsRect, input.constraintDiagnostics, input.activeSetIds, phaseBars)
+    this.drawQueueWidget(queueRect, rawSeries, safeSeries, input.overloadThreshold, phaseQueue, pulse)
   }
 
-  private drawBackdrop(width: number, height: number, clockMs: number, phaseQueue: number): void {
+  private drawBackdrop(width: number, height: number): void {
     const ctx = this.ctx
-
-    const base = ctx.createLinearGradient(0, 0, 0, height)
-    base.addColorStop(0, '#111d30')
-    base.addColorStop(1, '#0a1220')
-    ctx.fillStyle = base
+    ctx.fillStyle = '#0f1a2d'
     ctx.fillRect(0, 0, width, height)
 
-    const topGlowX = width * 0.2 + Math.sin(clockMs * 0.00035) * 22
-    const topGlowY = height * 0.1 + Math.cos(clockMs * 0.00028) * 10
-    const topGlow = ctx.createRadialGradient(topGlowX, topGlowY, 18, topGlowX, topGlowY, width * 0.62)
-    topGlow.addColorStop(0, 'rgba(86, 148, 233, 0.24)')
-    topGlow.addColorStop(1, 'rgba(86, 148, 233, 0)')
-    ctx.fillStyle = topGlow
-    ctx.fillRect(0, 0, width, height)
-
-    const lowerGlow = ctx.createRadialGradient(width * 0.84, height * 0.86, 18, width * 0.84, height * 0.86, width * 0.52)
-    lowerGlow.addColorStop(0, `rgba(89, 212, 255, ${0.12 + phaseQueue * 0.12})`)
-    lowerGlow.addColorStop(1, 'rgba(89, 212, 255, 0)')
-    ctx.fillStyle = lowerGlow
-    ctx.fillRect(0, 0, width, height)
-  }
-
-  private drawPanelChrome(panel: Rect, title: string, subtitle: string, accentProgress: number): void {
-    const ctx = this.ctx
-
-    this.drawRoundedRect(panel.x, panel.y, panel.width, panel.height, 12)
-    ctx.fillStyle = 'rgba(15, 25, 40, 0.8)'
+    ctx.fillStyle = 'rgba(59, 109, 185, 0.12)'
+    ctx.beginPath()
+    ctx.ellipse(width * 0.22, height * 0.12, width * 0.35, height * 0.25, 0, 0, Math.PI * 2)
     ctx.fill()
-    ctx.strokeStyle = 'rgba(63, 95, 138, 0.7)'
+  }
+
+  private drawFrameChrome(frame: Rect): void {
+    const ctx = this.ctx
+
+    this.drawRoundedRect(frame.x, frame.y, frame.width, frame.height, 12)
+    ctx.fillStyle = 'rgba(12, 22, 35, 0.78)'
+    ctx.fill()
+    ctx.strokeStyle = PANEL_STROKE
     ctx.lineWidth = 1
     ctx.stroke()
 
-    const accent = ctx.createLinearGradient(panel.x + 12, panel.y, panel.x + panel.width * 0.74, panel.y)
-    accent.addColorStop(0, `rgba(89, 156, 247, ${0.34 + accentProgress * 0.3})`)
-    accent.addColorStop(1, 'rgba(89, 156, 247, 0)')
-    ctx.fillStyle = accent
-    ctx.fillRect(panel.x + 12, panel.y + 10, Math.max(120, panel.width * 0.48), 2)
+    ctx.fillStyle = 'rgba(91, 145, 229, 0.28)'
+    ctx.fillRect(frame.x + 12, frame.y + 10, Math.min(220, frame.width * 0.32), 2)
 
     ctx.font = '700 10px "IBM Plex Mono", monospace'
-    ctx.fillStyle = '#8eb3e1'
-    ctx.fillText(title, panel.x + 12, panel.y + 24)
+    ctx.fillStyle = '#8fb4e3'
+    ctx.fillText('PROJECTION STAGE', frame.x + 12, frame.y + 24)
 
     ctx.font = '600 10px "Sora", sans-serif'
-    ctx.fillStyle = '#6f8cb1'
-    ctx.fillText(subtitle, panel.x + 12, panel.y + 39)
+    ctx.fillStyle = '#6f8db2'
+    ctx.fillText('raw step -> boundary hit -> push-back -> safe step', frame.x + 12, frame.y + 39)
   }
 
-  private drawGeometryPanel(
-    panel: Rect,
+  private drawGeometryStage(
+    rect: Rect,
     halfspaces: Halfspace[],
     step0: Vec2,
     projectedStep: Vec2,
     gradient: Vec2,
     diagnostics: ConstraintDiagnostic[],
-    activeSetIds: string[],
     phaseRaw: number,
-    phaseViolation: number,
-    phaseProject: number,
+    phaseHit: number,
+    phaseSnap: number,
     pulse: number,
   ): void {
-    const ctx = this.ctx
-    const chart: Rect = {
-      x: panel.x + 12,
-      y: panel.y + 56,
-      width: panel.width - 24,
-      height: panel.height - 74,
-    }
-
-    this.drawGrid(chart, 4, 4)
+    this.drawSubframe(rect)
+    this.drawGrid(rect, 5, 5)
 
     const active = halfspaces.filter((halfspace) => halfspace.active)
-    const mapper = this.createMapper(chart, active)
-    const zone = intersectHalfspaces(active, mapper.worldRadius)
+    const mapper = this.createMapper(rect, active)
 
+    const zone = intersectHalfspaces(active, mapper.worldRadius)
     if (!zone.isEmpty) {
-      ctx.beginPath()
+      this.ctx.beginPath()
       zone.vertices.forEach((vertex, index) => {
-        const mapped = mapper.worldToCanvas(vertex)
+        const point = mapper.worldToCanvas(vertex)
         if (index === 0) {
-          ctx.moveTo(mapped.x, mapped.y)
+          this.ctx.moveTo(point.x, point.y)
         } else {
-          ctx.lineTo(mapped.x, mapped.y)
+          this.ctx.lineTo(point.x, point.y)
         }
       })
-      ctx.closePath()
-
-      const zoneFill = ctx.createLinearGradient(chart.x, chart.y, chart.x + chart.width, chart.y + chart.height)
-      zoneFill.addColorStop(0, withAlpha(ZONE_COLOR, 0.14 + pulse * 0.05))
-      zoneFill.addColorStop(1, withAlpha(ZONE_COLOR, 0.05))
-      ctx.fillStyle = zoneFill
-      ctx.fill()
-      ctx.strokeStyle = withAlpha(ZONE_COLOR, 0.74)
-      ctx.lineWidth = 1.2
-      ctx.stroke()
+      this.ctx.closePath()
+      this.ctx.fillStyle = FEASIBLE_COLOR
+      this.ctx.fill()
+      this.ctx.strokeStyle = 'rgba(80, 170, 130, 0.78)'
+      this.ctx.lineWidth = 1
+      this.ctx.stroke()
     }
 
-    const diagnosticsById = new Map(diagnostics.map((item) => [item.id, item]))
-    this.drawConstraintBoundaries(mapper, active, diagnosticsById, phaseViolation, pulse)
+    const violationById = new Map(diagnostics.map((item) => [item.id, item]))
+    this.drawBoundaryLines(mapper, active, violationById, phaseHit, pulse)
 
     const origin = mapper.worldToCanvas(vec(0, 0))
     const rawTarget = mapper.worldToCanvas(step0)
-    const rawVisible = mapper.worldToCanvas(scale(step0, clamp(phaseRaw, 0.02, 1)))
-    const safeTarget = mapper.worldToCanvas(projectedStep)
-    const safeVisible = mapper.worldToCanvas(lerp(step0, projectedStep, phaseProject))
 
-    this.drawArrow(origin, rawVisible, withAlpha(RAW_COLOR, 0.9), 2.2, false)
+    const rawVisible = mapper.worldToCanvas(lerp(vec(0, 0), step0, clamp(phaseRaw, 0.02, 1)))
+    this.drawArrow(origin, rawVisible, RAW_COLOR, 2.1)
 
-    if (phaseViolation > 0.05) {
-      this.drawViolationMarkers(mapper, diagnostics, phaseViolation, pulse)
+    const primaryViolation = diagnostics
+      .filter((item) => item.active && item.violationStep0 > 1e-6)
+      .sort((a, b) => b.violationStep0 - a.violationStep0)[0]
+
+    if (primaryViolation && phaseHit > 0.03) {
+      this.drawViolationPulse(mapper, primaryViolation, phaseHit, pulse)
+      this.drawTag(rawTarget, 'Check violated', WARN_COLOR)
     }
 
-    if (phaseProject > 0.03) {
-      this.drawArrow(origin, safeVisible, withAlpha(SAFE_COLOR, 0.82 + phaseProject * 0.16), 2.8, false)
-      this.drawPushbackVector(rawVisible, safeVisible, phaseProject)
-      this.drawProjectionBridge(rawTarget, safeTarget, phaseProject, pulse)
+    if (phaseSnap > 0.02) {
+      const snapProgress = clamp(easeOutBack(phaseSnap), 0, 1.05)
+      const safeVisible = mapper.worldToCanvas(lerp(step0, projectedStep, snapProgress))
+      this.drawArrow(origin, safeVisible, SAFE_COLOR, 2.5)
+      this.drawArrow(rawTarget, safeVisible, WARN_COLOR, 1.4, true)
+      this.drawTag(safeVisible, 'Safe step', SAFE_COLOR)
+      this.drawTag(rawTarget, 'Raw step', RAW_COLOR, -18)
     }
 
-    this.drawDirectionHint(mapper, gradient)
+    this.drawArrow(origin, mapper.worldToCanvas(scale(normalize(gradient), -mapper.worldRadius * 0.62)), '#f1c46f', 1.1, true)
 
-    this.drawNode(origin, '#87abd9', 3.8, 0)
-    this.drawNode(rawVisible, RAW_COLOR, 3.5, 7.8)
-    if (phaseProject > 0.03) {
-      this.drawNode(safeVisible, SAFE_COLOR, 3.8, 8)
+    this.drawNode(origin, '#8eb4e4', 3.6)
+    this.drawNode(rawVisible, RAW_COLOR, 3.6)
+    if (phaseSnap > 0.02) {
+      const snapProgress = clamp(easeOutBack(phaseSnap), 0, 1)
+      this.drawNode(mapper.worldToCanvas(lerp(step0, projectedStep, snapProgress)), SAFE_COLOR, 3.8)
     }
-
-    this.drawConstraintBars(chart, diagnostics, activeSetIds, phaseProject)
 
     const caption =
-      phaseProject < 0.08
-        ? 'Raw step is applied first.'
-        : phaseProject < 0.95
-          ? 'Projection removes only the unsafe component.'
-          : 'Safe step is feasible under active checks.'
+      phaseSnap < 0.06
+        ? 'Raw step is evaluated first.'
+        : phaseSnap < 0.95
+          ? 'Only the unsafe part is corrected.'
+          : 'Projected step is feasible under active checks.'
 
-    this.drawPanelCaption(chart, caption)
+    this.drawCaption(rect, caption)
   }
 
-  private drawQueuePanel(
-    panel: Rect,
-    rawSeries: number[],
-    safeSeries: number[],
-    threshold: number,
-    phaseQueue: number,
-    pulse: number,
-  ): void {
-    const chart: Rect = {
-      x: panel.x + 12,
-      y: panel.y + 56,
-      width: panel.width - 24,
-      height: panel.height - 74,
-    }
+  private drawPressureWidget(rect: Rect, diagnostics: ConstraintDiagnostic[], activeSetIds: string[], phaseBars: number): void {
+    this.drawSubframe(rect)
 
+    const ctx = this.ctx
+    ctx.font = '700 9px "IBM Plex Mono", monospace'
+    ctx.fillStyle = '#90b7e6'
+    ctx.fillText('ACTIVE CHECK PRESSURE', rect.x + 8, rect.y + 14)
+
+    const activeSet = new Set(activeSetIds)
+    const items = diagnostics
+      .filter((item) => item.active)
+      .sort((a, b) => {
+        const aActive = activeSet.has(a.id) ? 1 : 0
+        const bActive = activeSet.has(b.id) ? 1 : 0
+        if (aActive !== bActive) {
+          return bActive - aActive
+        }
+        return Math.max(b.lambda, b.violationStep0) - Math.max(a.lambda, a.violationStep0)
+      })
+      .slice(0, 4)
+
+    const maxLoad = Math.max(
+      0.001,
+      ...items.map((item) => (activeSet.has(item.id) ? Math.max(item.lambda, item.violationStep0) : item.violationStep0 * 0.22)),
+    )
+
+    items.forEach((item, index) => {
+      const y = rect.y + 24 + index * 18
+      const active = activeSet.has(item.id)
+      const load = active ? Math.max(item.lambda, item.violationStep0) : item.violationStep0 * 0.22
+      const normalized = clamp(load / maxLoad)
+      const fillRatio = clamp((active ? 0.18 + normalized * 0.82 : normalized * 0.18) * phaseBars)
+
+      ctx.font = '600 8px "Sora", sans-serif'
+      ctx.fillStyle = active ? '#c2e4ff' : '#7f97ba'
+      ctx.fillText(shortLabel(item.label), rect.x + 8, y + 8)
+
+      const barX = rect.x + 62
+      const barY = y + 2
+      const barWidth = rect.width - 70
+
+      this.drawRoundedRect(barX, barY, barWidth, 7, 3)
+      ctx.fillStyle = 'rgba(115, 146, 187, 0.2)'
+      ctx.fill()
+
+      this.drawRoundedRect(barX, barY, barWidth * fillRatio, 7, 3)
+      ctx.fillStyle = active ? withAlpha(SAFE_COLOR, 0.84) : withAlpha('#7f97ba', 0.36)
+      ctx.fill()
+    })
+  }
+
+  private drawQueueWidget(rect: Rect, rawSeries: number[], safeSeries: number[], threshold: number, phaseQueue: number, pulse: number): void {
+    this.drawSubframe(rect)
     if (rawSeries.length === 0 || safeSeries.length === 0) {
       return
     }
 
+    const chart: Rect = {
+      x: rect.x + 8,
+      y: rect.y + 18,
+      width: rect.width - 16,
+      height: rect.height - 28,
+    }
+
+    this.drawGrid(chart, 3, 3)
+
     const maxValue = Math.max(...rawSeries, ...safeSeries, threshold, 1)
     const upper = maxValue * 1.08
-
     const mapX = (index: number, length: number): number => chart.x + (index / Math.max(1, length - 1)) * chart.width
     const mapY = (value: number): number => chart.y + chart.height - (value / upper) * chart.height
 
-    const reveal = clamp(phaseQueue * 1.08)
+    const reveal = clamp(phaseQueue)
     const thresholdY = mapY(threshold)
 
-    this.drawGrid(chart, 4, 4)
-    this.drawThresholdZone(chart, thresholdY)
+    this.ctx.save()
+    this.ctx.setLineDash([5, 4])
+    this.ctx.beginPath()
+    this.ctx.moveTo(chart.x, thresholdY)
+    this.ctx.lineTo(chart.x + chart.width, thresholdY)
+    this.ctx.strokeStyle = withAlpha(RAW_COLOR, 0.72)
+    this.ctx.lineWidth = 1
+    this.ctx.stroke()
+    this.ctx.restore()
 
     this.drawClipped(chart, reveal, () => {
-      this.drawSeriesFill(rawSeries, mapX, mapY, withAlpha(RAW_COLOR, 0.08))
-      this.drawSeriesFill(safeSeries, mapX, mapY, withAlpha(SAFE_COLOR, 0.12))
-      this.drawDeltaBand(rawSeries, safeSeries, mapX, mapY)
-      this.drawSmoothSeries(rawSeries, mapX, mapY, RAW_COLOR, 2.2)
-      this.drawSmoothSeries(safeSeries, mapX, mapY, SAFE_COLOR, 2.9)
-      this.drawRevealSweep(chart, reveal, pulse)
+      this.drawSmoothSeries(rawSeries, mapX, mapY, RAW_COLOR, 1.9)
+      this.drawSmoothSeries(safeSeries, mapX, mapY, SAFE_COLOR, 2.4)
+      const x = chart.x + chart.width * reveal
+      const gradient = this.ctx.createLinearGradient(x - 20, chart.y, x + 20, chart.y)
+      gradient.addColorStop(0, 'rgba(47, 119, 234, 0)')
+      gradient.addColorStop(0.5, `rgba(47, 119, 234, ${0.1 + pulse * 0.08})`)
+      gradient.addColorStop(1, 'rgba(47, 119, 234, 0)')
+      this.ctx.fillStyle = gradient
+      this.ctx.fillRect(x - 20, chart.y, 40, chart.height)
     })
 
-    const rawCursor = this.valueAtProgress(rawSeries, reveal)
-    const safeCursor = this.valueAtProgress(safeSeries, reveal)
-    const xCursor = mapX(reveal * Math.max(1, rawSeries.length - 1), rawSeries.length)
+    const delta = Math.max(0, Math.round(rawSeries[rawSeries.length - 1] - safeSeries[safeSeries.length - 1]))
+    this.ctx.font = '700 9px "IBM Plex Mono", monospace'
+    this.ctx.fillStyle = '#92b9ea'
+    this.ctx.fillText(reveal < 0.2 ? 'REPLAYING...' : `${Math.round(delta * reveal)} fewer queued`, rect.x + 8, rect.y + 12)
+  }
 
-    this.drawCursor(xCursor, mapY(rawCursor), RAW_COLOR)
-    this.drawCursor(xCursor, mapY(safeCursor), SAFE_COLOR)
+  private drawBoundaryLines(
+    mapper: Mapper,
+    halfspaces: Halfspace[],
+    diagnosticsById: Map<string, ConstraintDiagnostic>,
+    phaseHit: number,
+    pulse: number,
+  ): void {
+    const span = mapper.worldRadius * 1.8
 
-    const finalDelta = Math.max(0, Math.round(rawSeries[rawSeries.length - 1] - safeSeries[safeSeries.length - 1]))
-    const deltaAtReveal = Math.round(finalDelta * reveal)
-    this.drawQueueBadge(chart, reveal < 0.2 ? 'REPLAYING' : `${deltaAtReveal} lower queue at horizon`)
+    halfspaces.forEach((halfspace, index) => {
+      const normal = normalize(halfspace.normal)
+      const tangent = vec(-normal.y, normal.x)
+      const anchor = scale(normal, halfspace.bound)
+      const p0 = mapper.worldToCanvas(sub(anchor, scale(tangent, span)))
+      const p1 = mapper.worldToCanvas(sub(anchor, scale(tangent, -span)))
 
-    const caption =
-      reveal < 0.2
-        ? 'Queue replay is starting.'
-        : 'Safe step reduces expected queue pressure under the same traffic pulse.'
-    this.drawPanelCaption(chart, caption)
+      const violated = (diagnosticsById.get(halfspace.id)?.violationStep0 ?? 0) > 1e-6
+
+      this.ctx.beginPath()
+      this.ctx.moveTo(p0.x, p0.y)
+      this.ctx.lineTo(p1.x, p1.y)
+      this.ctx.strokeStyle = withAlpha(index % 2 === 0 ? '#7eaee3' : '#76c6a7', violated ? 0.44 : 0.34)
+      this.ctx.lineWidth = 1
+      this.ctx.stroke()
+
+      if (violated && phaseHit > 0.02) {
+        this.ctx.beginPath()
+        this.ctx.moveTo(p0.x, p0.y)
+        this.ctx.lineTo(p1.x, p1.y)
+        this.ctx.strokeStyle = withAlpha(WARN_COLOR, 0.2 + phaseHit * 0.38 + pulse * 0.06)
+        this.ctx.lineWidth = 1
+        this.ctx.stroke()
+      }
+    })
+  }
+
+  private drawViolationPulse(mapper: Mapper, diagnostic: ConstraintDiagnostic, phaseHit: number, pulse: number): void {
+    const normal = normalize(diagnostic.normal)
+    const anchor = scale(normal, diagnostic.bound)
+    const point = mapper.worldToCanvas(anchor)
+    const radius = 7 + phaseHit * 4 + pulse * 1.2
+
+    this.ctx.beginPath()
+    this.ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
+    this.ctx.strokeStyle = withAlpha(WARN_COLOR, 0.28 + phaseHit * 0.34)
+    this.ctx.lineWidth = 1
+    this.ctx.stroke()
+  }
+
+  private drawSubframe(rect: Rect): void {
+    this.drawRoundedRect(rect.x, rect.y, rect.width, rect.height, 10)
+    this.ctx.fillStyle = 'rgba(14, 24, 38, 0.78)'
+    this.ctx.fill()
+    this.ctx.strokeStyle = 'rgba(80, 113, 155, 0.62)'
+    this.ctx.lineWidth = 1
+    this.ctx.stroke()
   }
 
   private drawGrid(rect: Rect, vertical: number, horizontal: number): void {
-    const ctx = this.ctx
-
     for (let i = 0; i <= vertical; i += 1) {
       const x = rect.x + (i / vertical) * rect.width
-      ctx.beginPath()
-      ctx.moveTo(x, rect.y)
-      ctx.lineTo(x, rect.y + rect.height)
-      ctx.strokeStyle = GRID_STROKE
-      ctx.lineWidth = 1
-      ctx.stroke()
+      this.ctx.beginPath()
+      this.ctx.moveTo(x, rect.y)
+      this.ctx.lineTo(x, rect.y + rect.height)
+      this.ctx.strokeStyle = GRID_STROKE
+      this.ctx.lineWidth = 1
+      this.ctx.stroke()
     }
 
     for (let i = 0; i <= horizontal; i += 1) {
       const y = rect.y + (i / horizontal) * rect.height
-      ctx.beginPath()
-      ctx.moveTo(rect.x, y)
-      ctx.lineTo(rect.x + rect.width, y)
-      ctx.strokeStyle = GRID_STROKE
-      ctx.lineWidth = 1
-      ctx.stroke()
+      this.ctx.beginPath()
+      this.ctx.moveTo(rect.x, y)
+      this.ctx.lineTo(rect.x + rect.width, y)
+      this.ctx.strokeStyle = GRID_STROKE
+      this.ctx.lineWidth = 1
+      this.ctx.stroke()
     }
   }
 
@@ -424,290 +535,75 @@ export class SceneRenderer {
     }
   }
 
-  private drawConstraintBoundaries(
-    mapper: Mapper,
-    halfspaces: Halfspace[],
-    diagnosticsById: Map<string, ConstraintDiagnostic>,
-    phaseViolation: number,
-    pulse: number,
-  ): void {
-    const ctx = this.ctx
-    const span = mapper.worldRadius * 1.7
-
-    halfspaces.forEach((halfspace, index) => {
-      const normal = normalize(halfspace.normal)
-      const tangent = vec(-normal.y, normal.x)
-      const anchor = scale(normal, halfspace.bound)
-      const p0 = mapper.worldToCanvas(sub(anchor, scale(tangent, span)))
-      const p1 = mapper.worldToCanvas(sub(anchor, scale(tangent, -span)))
-
-      const diagnostic = diagnosticsById.get(halfspace.id)
-      const violated = (diagnostic?.violationStep0 ?? 0) > 1e-6
-
-      ctx.beginPath()
-      ctx.moveTo(p0.x, p0.y)
-      ctx.lineTo(p1.x, p1.y)
-      ctx.strokeStyle = withAlpha(index % 2 === 0 ? '#7eb6eb' : '#6fc9a8', violated ? 0.35 + phaseViolation * 0.2 : 0.4)
-      ctx.lineWidth = violated ? 1 + phaseViolation * 0.6 : 0.95
-      ctx.stroke()
-
-      if (violated && phaseViolation > 0.02) {
-        ctx.beginPath()
-        ctx.moveTo(p0.x, p0.y)
-        ctx.lineTo(p1.x, p1.y)
-        ctx.strokeStyle = withAlpha(VIOLATION_COLOR, 0.24 + phaseViolation * 0.28 + pulse * 0.08)
-        ctx.lineWidth = 1.2 + phaseViolation * 0.7
-        ctx.stroke()
-      }
-    })
-  }
-
-  private drawViolationMarkers(mapper: Mapper, diagnostics: ConstraintDiagnostic[], phaseViolation: number, pulse: number): void {
-    for (const diagnostic of diagnostics) {
-      if (!diagnostic.active || diagnostic.violationStep0 <= 1e-6) {
-        continue
-      }
-
-      const normal = normalize(diagnostic.normal)
-      const anchor = scale(normal, diagnostic.bound)
-      const marker = mapper.worldToCanvas(anchor)
-      const radius = 6 + phaseViolation * 4 + pulse * 1.4
-
-      this.ctx.beginPath()
-      this.ctx.arc(marker.x, marker.y, radius, 0, Math.PI * 2)
-      this.ctx.strokeStyle = withAlpha(VIOLATION_COLOR, 0.26 + phaseViolation * 0.34)
-      this.ctx.lineWidth = 1.1
-      this.ctx.stroke()
-    }
-  }
-
-  private drawConstraintBars(
-    chart: Rect,
-    diagnostics: ConstraintDiagnostic[],
-    activeSetIds: string[],
-    phaseProject: number,
-  ): void {
-    if (diagnostics.length === 0) {
-      return
-    }
-
-    const ctx = this.ctx
-    const activeSet = new Set(activeSetIds)
-
-    const items = diagnostics
-      .filter((item) => item.active)
-      .sort((a, b) => {
-        const activeA = activeSet.has(a.id) ? 1 : 0
-        const activeB = activeSet.has(b.id) ? 1 : 0
-        if (activeA !== activeB) {
-          return activeB - activeA
-        }
-        return b.lambda - a.lambda
-      })
-      .slice(0, 4)
-
-    if (items.length === 0) {
-      return
-    }
-
-    const panelWidth = Math.min(142, chart.width * 0.38)
-    const panelHeight = 14 + items.length * 16
-    const panelX = chart.x + chart.width - panelWidth - 8
-    const panelY = chart.y + 8
-
-    this.drawRoundedRect(panelX, panelY, panelWidth, panelHeight, 8)
-    ctx.fillStyle = 'rgba(11, 21, 35, 0.84)'
-    ctx.fill()
-    ctx.strokeStyle = 'rgba(105, 144, 196, 0.45)'
-    ctx.lineWidth = 1
-    ctx.stroke()
-
-    ctx.font = '700 8px "IBM Plex Mono", monospace'
-    ctx.fillStyle = '#90b7e7'
-    ctx.fillText('ACTIVE CHECK PRESSURE', panelX + 8, panelY + 10)
-
-    const maxLoad = Math.max(
-      0.001,
-      ...items.map((item) => (activeSet.has(item.id) ? Math.max(item.lambda, item.violationStep0) : item.violationStep0 * 0.25)),
-    )
-
-    items.forEach((item, index) => {
-      const y = panelY + 14 + index * 16
-      const active = activeSet.has(item.id)
-      const load = active ? Math.max(item.lambda, item.violationStep0) : item.violationStep0 * 0.25
-      const normalized = clamp(load / maxLoad)
-      const fill = (active ? 0.2 + normalized * 0.8 : normalized * 0.12) * clamp(phaseProject * 1.1)
-
-      ctx.font = '600 8px "Sora", sans-serif'
-      ctx.fillStyle = active ? '#b9e6ff' : '#7f98bb'
-      ctx.fillText(shortLabel(item.label), panelX + 8, y + 7)
-
-      const barX = panelX + 54
-      const barY = y + 1
-      const barWidth = panelWidth - 62
-
-      this.drawRoundedRect(barX, barY, barWidth, 6, 3)
-      ctx.fillStyle = 'rgba(118, 151, 194, 0.18)'
-      ctx.fill()
-
-      this.drawRoundedRect(barX, barY, barWidth * fill, 6, 3)
-      ctx.fillStyle = active ? withAlpha(SAFE_COLOR, 0.82) : withAlpha('#89a5c9', 0.34)
-      ctx.fill()
-    })
-  }
-
-  private drawDirectionHint(mapper: Mapper, gradient: Vec2): void {
-    const origin = mapper.worldToCanvas(vec(0, 0))
-    const direction = scale(normalize(gradient), mapper.worldRadius * 0.62)
-    const target = mapper.worldToCanvas(scale(direction, -1))
-    this.drawArrow(origin, target, withAlpha('#f2c16d', 0.54), 1.1, true)
-  }
-
-  private drawArrow(from: Vec2, to: Vec2, color: string, width: number, dashed: boolean): void {
-    const ctx = this.ctx
+  private drawArrow(from: Vec2, to: Vec2, color: string, width: number, dashed = false): void {
     const angle = Math.atan2(to.y - from.y, to.x - from.x)
-    const head = 9
+    const head = 8
 
-    ctx.save()
+    this.ctx.save()
     if (dashed) {
-      ctx.setLineDash([7, 5])
+      this.ctx.setLineDash([5, 4])
     }
-    ctx.beginPath()
-    ctx.moveTo(from.x, from.y)
-    ctx.lineTo(to.x, to.y)
-    ctx.strokeStyle = color
-    ctx.lineWidth = width
-    ctx.lineCap = 'round'
-    ctx.stroke()
-    ctx.restore()
+    this.ctx.beginPath()
+    this.ctx.moveTo(from.x, from.y)
+    this.ctx.lineTo(to.x, to.y)
+    this.ctx.strokeStyle = color
+    this.ctx.lineWidth = width
+    this.ctx.lineCap = 'round'
+    this.ctx.stroke()
+    this.ctx.restore()
 
-    ctx.beginPath()
-    ctx.moveTo(to.x, to.y)
-    ctx.lineTo(to.x - head * Math.cos(angle - Math.PI / 6), to.y - head * Math.sin(angle - Math.PI / 6))
-    ctx.lineTo(to.x - head * Math.cos(angle + Math.PI / 6), to.y - head * Math.sin(angle + Math.PI / 6))
-    ctx.closePath()
-    ctx.fillStyle = color
-    ctx.fill()
+    this.ctx.beginPath()
+    this.ctx.moveTo(to.x, to.y)
+    this.ctx.lineTo(to.x - head * Math.cos(angle - Math.PI / 6), to.y - head * Math.sin(angle - Math.PI / 6))
+    this.ctx.lineTo(to.x - head * Math.cos(angle + Math.PI / 6), to.y - head * Math.sin(angle + Math.PI / 6))
+    this.ctx.closePath()
+    this.ctx.fillStyle = color
+    this.ctx.fill()
   }
 
-  private drawPushbackVector(rawPoint: Vec2, safePoint: Vec2, phaseProject: number): void {
-    const end = lerp(rawPoint, safePoint, clamp(phaseProject * 0.95))
-    this.drawArrow(rawPoint, end, withAlpha(BRIDGE_COLOR, 0.78), 1.4, true)
+  private drawNode(point: Vec2, color: string, radius: number): void {
+    this.ctx.beginPath()
+    this.ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
+    this.ctx.fillStyle = color
+    this.ctx.fill()
+
+    this.ctx.beginPath()
+    this.ctx.arc(point.x, point.y, radius + 4.8, 0, Math.PI * 2)
+    this.ctx.strokeStyle = withAlpha(color, 0.35)
+    this.ctx.lineWidth = 1
+    this.ctx.stroke()
   }
 
-  private drawProjectionBridge(rawPoint: Vec2, safePoint: Vec2, phaseProject: number, pulse: number): void {
-    const ctx = this.ctx
-    const end = lerp(rawPoint, safePoint, clamp(phaseProject))
+  private drawTag(point: Vec2, text: string, color: string, dy = -12): void {
+    this.ctx.font = '600 9px "Sora", sans-serif'
+    const width = this.ctx.measureText(text).width + 12
+    const x = clamp(point.x + 8, 8, this.canvas.clientWidth - width - 8)
+    const y = clamp(point.y + dy, 8, this.canvas.clientHeight - 22)
 
-    ctx.save()
-    ctx.setLineDash([4, 4])
-    ctx.beginPath()
-    ctx.moveTo(rawPoint.x, rawPoint.y)
-    ctx.lineTo(end.x, end.y)
-    ctx.strokeStyle = withAlpha(BRIDGE_COLOR, 0.74)
-    ctx.lineWidth = 1.2
-    ctx.stroke()
-    ctx.restore()
+    this.drawRoundedRect(x, y, width, 16, 6)
+    this.ctx.fillStyle = 'rgba(12, 22, 35, 0.88)'
+    this.ctx.fill()
+    this.ctx.strokeStyle = withAlpha(color, 0.5)
+    this.ctx.lineWidth = 1
+    this.ctx.stroke()
 
-    this.drawNode(end, BRIDGE_COLOR, 2.9 + pulse * 0.8, 5.8 + pulse * 1.1)
+    this.ctx.fillStyle = withAlpha(color, 0.95)
+    this.ctx.fillText(text, x + 6, y + 11)
   }
 
-  private drawNode(point: Vec2, color: string, innerRadius: number, outerRadius: number): void {
-    const ctx = this.ctx
-
-    ctx.beginPath()
-    ctx.arc(point.x, point.y, innerRadius, 0, Math.PI * 2)
-    ctx.fillStyle = color
-    ctx.fill()
-
-    if (outerRadius > 0) {
-      ctx.beginPath()
-      ctx.arc(point.x, point.y, outerRadius, 0, Math.PI * 2)
-      ctx.strokeStyle = withAlpha(color, 0.4)
-      ctx.lineWidth = 1
-      ctx.stroke()
-    }
-  }
-
-  private drawThresholdZone(chart: Rect, thresholdY: number): void {
-    const ctx = this.ctx
-
-    ctx.fillStyle = withAlpha(RAW_COLOR, 0.09)
-    ctx.fillRect(chart.x, chart.y, chart.width, Math.max(0, thresholdY - chart.y))
-
-    ctx.save()
-    ctx.setLineDash([6, 5])
-    ctx.beginPath()
-    ctx.moveTo(chart.x, thresholdY)
-    ctx.lineTo(chart.x + chart.width, thresholdY)
-    ctx.strokeStyle = withAlpha(RAW_COLOR, 0.8)
-    ctx.lineWidth = 1.2
-    ctx.stroke()
-    ctx.restore()
-
-    ctx.font = '600 10px "IBM Plex Mono", monospace'
-    ctx.fillStyle = '#ff9fb2'
-    const labelY = clamp(thresholdY - 6, chart.y + 12, chart.y + chart.height - 8)
-    ctx.fillText('threshold', chart.x + chart.width - 62, labelY)
+  private drawCaption(rect: Rect, text: string): void {
+    this.ctx.font = '600 10px "Sora", sans-serif'
+    this.ctx.fillStyle = '#96b9e8'
+    this.ctx.fillText(text, rect.x + 8, rect.y + rect.height - 10)
   }
 
   private drawClipped(chart: Rect, reveal: number, draw: () => void): void {
-    const ctx = this.ctx
-    ctx.save()
-    ctx.beginPath()
-    ctx.rect(chart.x, chart.y, chart.width * reveal, chart.height)
-    ctx.clip()
+    this.ctx.save()
+    this.ctx.beginPath()
+    this.ctx.rect(chart.x, chart.y, chart.width * reveal, chart.height)
+    this.ctx.clip()
     draw()
-    ctx.restore()
-  }
-
-  private drawSeriesFill(
-    series: number[],
-    mapX: (index: number, length: number) => number,
-    mapY: (value: number) => number,
-    color: string,
-  ): void {
-    if (series.length < 2) {
-      return
-    }
-
-    const ctx = this.ctx
-    const baseline = mapY(0)
-
-    ctx.beginPath()
-    ctx.moveTo(mapX(0, series.length), baseline)
-    for (let i = 0; i < series.length; i += 1) {
-      ctx.lineTo(mapX(i, series.length), mapY(series[i]))
-    }
-    ctx.lineTo(mapX(series.length - 1, series.length), baseline)
-    ctx.closePath()
-    ctx.fillStyle = color
-    ctx.fill()
-  }
-
-  private drawDeltaBand(
-    rawSeries: number[],
-    safeSeries: number[],
-    mapX: (index: number, length: number) => number,
-    mapY: (value: number) => number,
-  ): void {
-    if (rawSeries.length < 2 || safeSeries.length < 2) {
-      return
-    }
-
-    const ctx = this.ctx
-    ctx.beginPath()
-    ctx.moveTo(mapX(0, rawSeries.length), mapY(rawSeries[0]))
-    for (let i = 1; i < rawSeries.length; i += 1) {
-      ctx.lineTo(mapX(i, rawSeries.length), mapY(rawSeries[i]))
-    }
-    for (let i = safeSeries.length - 1; i >= 0; i -= 1) {
-      ctx.lineTo(mapX(i, safeSeries.length), mapY(safeSeries[i]))
-    }
-    ctx.closePath()
-
-    ctx.fillStyle = withAlpha(SAFE_COLOR, 0.12)
-    ctx.fill()
+    this.ctx.restore()
   }
 
   private drawSmoothSeries(
@@ -721,111 +617,35 @@ export class SceneRenderer {
       return
     }
 
-    const ctx = this.ctx
     const points = series.map((value, index) => vec(mapX(index, series.length), mapY(value)))
 
-    ctx.beginPath()
-    ctx.moveTo(points[0].x, points[0].y)
+    this.ctx.beginPath()
+    this.ctx.moveTo(points[0].x, points[0].y)
     for (let i = 1; i < points.length - 1; i += 1) {
       const current = points[i]
       const next = points[i + 1]
       const midX = (current.x + next.x) / 2
       const midY = (current.y + next.y) / 2
-      ctx.quadraticCurveTo(current.x, current.y, midX, midY)
+      this.ctx.quadraticCurveTo(current.x, current.y, midX, midY)
     }
-    const last = points[points.length - 1]
-    ctx.lineTo(last.x, last.y)
+    this.ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y)
 
-    ctx.strokeStyle = color
-    ctx.lineWidth = width
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    ctx.stroke()
-  }
-
-  private drawRevealSweep(chart: Rect, reveal: number, pulse: number): void {
-    const ctx = this.ctx
-    const x = chart.x + chart.width * reveal
-    const gradient = ctx.createLinearGradient(x - 28, chart.y, x + 28, chart.y)
-    gradient.addColorStop(0, 'rgba(89, 212, 255, 0)')
-    gradient.addColorStop(0.5, `rgba(89, 212, 255, ${0.08 + pulse * 0.08})`)
-    gradient.addColorStop(1, 'rgba(89, 212, 255, 0)')
-
-    ctx.fillStyle = gradient
-    ctx.fillRect(x - 28, chart.y, 56, chart.height)
-  }
-
-  private drawCursor(x: number, y: number, color: string): void {
-    const ctx = this.ctx
-
-    ctx.beginPath()
-    ctx.arc(x, y, 4.2, 0, Math.PI * 2)
-    ctx.fillStyle = color
-    ctx.fill()
-
-    ctx.beginPath()
-    ctx.arc(x, y, 8.8, 0, Math.PI * 2)
-    ctx.strokeStyle = withAlpha(color, 0.4)
-    ctx.lineWidth = 1
-    ctx.stroke()
-  }
-
-  private drawQueueBadge(chart: Rect, text: string): void {
-    const ctx = this.ctx
-    ctx.font = '700 10px "IBM Plex Mono", monospace'
-
-    const width = ctx.measureText(text).width + 14
-    const x = chart.x + chart.width - width - 8
-    const y = chart.y + 8
-
-    this.drawRoundedRect(x, y, width, 18, 7)
-    ctx.fillStyle = 'rgba(14, 24, 39, 0.92)'
-    ctx.fill()
-    ctx.strokeStyle = 'rgba(119, 160, 212, 0.52)'
-    ctx.lineWidth = 1
-    ctx.stroke()
-
-    ctx.fillStyle = '#95bfef'
-    ctx.fillText(text, x + 7, y + 12)
-  }
-
-  private valueAtProgress(series: number[], progress: number): number {
-    if (series.length === 0) {
-      return 0
-    }
-    if (series.length === 1) {
-      return series[0]
-    }
-
-    const capped = clamp(progress)
-    const position = capped * (series.length - 1)
-    const i0 = Math.floor(position)
-    const i1 = Math.min(series.length - 1, i0 + 1)
-    const t = position - i0
-
-    return series[i0] + (series[i1] - series[i0]) * t
-  }
-
-  private drawPanelCaption(chart: Rect, text: string): void {
-    const ctx = this.ctx
-    const x = chart.x + 8
-    const y = chart.y + chart.height - 12
-
-    ctx.font = '600 10px "Sora", sans-serif'
-    ctx.fillStyle = '#93b6df'
-    ctx.fillText(text, x, y)
+    this.ctx.strokeStyle = color
+    this.ctx.lineWidth = width
+    this.ctx.lineCap = 'round'
+    this.ctx.lineJoin = 'round'
+    this.ctx.stroke()
   }
 
   private drawRoundedRect(x: number, y: number, width: number, height: number, radius: number): void {
-    const ctx = this.ctx
     const r = Math.min(radius, width / 2, height / 2)
 
-    ctx.beginPath()
-    ctx.moveTo(x + r, y)
-    ctx.arcTo(x + width, y, x + width, y + height, r)
-    ctx.arcTo(x + width, y + height, x, y + height, r)
-    ctx.arcTo(x, y + height, x, y, r)
-    ctx.arcTo(x, y, x + width, y, r)
-    ctx.closePath()
+    this.ctx.beginPath()
+    this.ctx.moveTo(x + r, y)
+    this.ctx.arcTo(x + width, y, x + width, y + height, r)
+    this.ctx.arcTo(x + width, y + height, x, y + height, r)
+    this.ctx.arcTo(x, y + height, x, y, r)
+    this.ctx.arcTo(x, y, x + width, y, r)
+    this.ctx.closePath()
   }
 }

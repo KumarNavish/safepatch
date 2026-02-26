@@ -20,18 +20,18 @@
     <main class="product">
       <header class="intro">
         <p class="eyebrow">SafePatch release check</p>
-        <h1>From risky hotfix to a defensible ship or hold decision.</h1>
+        <h1>See the unsafe part of a patch get corrected in real time.</h1>
         <p class="intro-text">
-          Raw patches can fix one issue while violating safety checks. SafePatch projects the raw update to the nearest
-          feasible update, then replays expected queue load so you can decide with evidence.
+          Problem: raw hotfixes can fix one issue while breaking policy checks. Solution: SafePatch keeps the patch as
+          close as possible while satisfying checks. Result: ship or hold, with reasons.
         </p>
       </header>
 
       <section class="workspace">
         <section class="stage" aria-label="SafePatch simulation stage">
           <div class="stage-head">
-            <p class="stage-kicker">Mechanism proof</p>
-            <p id="stage-caption" class="stage-caption">Run release check to simulate raw patch, projection, and queue impact.</p>
+            <p class="stage-kicker">Mechanism</p>
+            <p id="stage-caption" class="stage-caption">Simulate patch to watch raw step, boundary hit, and safe projection.</p>
           </div>
 
           <div class="proof-canvas">
@@ -70,8 +70,8 @@
 
         <aside class="controls">
           <p class="controls-kicker">Scenario</p>
-          <h2>Run release check</h2>
-          <p class="controls-intro">Choose a preset, adjust advanced knobs if needed, then run.</p>
+          <h2>Simulate release</h2>
+          <p class="controls-intro">Pick a preset and simulate. Advanced knobs are optional.</p>
 
           <div class="field-card">
             <p class="field-title">Traffic preset</p>
@@ -83,7 +83,7 @@
             <p id="scenario-note" class="field-note">Traffic spike: meaningful pressure, still recoverable.</p>
           </div>
 
-          <button id="run-button" class="primary-btn" type="button">Run release check</button>
+          <button id="run-button" class="primary-btn" type="button">Simulate patch</button>
 
           <details class="advanced-panel">
             <summary>Advanced controls</summary>
@@ -117,7 +117,7 @@
             </p>
           </details>
 
-          <details class="explain-panel" open>
+          <details class="explain-panel">
             <summary>Decision breakdown</summary>
 
             <div class="ops-grid">

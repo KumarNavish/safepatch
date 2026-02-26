@@ -202,7 +202,7 @@ export class UIController {
 
   setRunPending(pending: boolean): void {
     this.runButton.classList.toggle('pending', pending)
-    this.runButton.textContent = pending ? 'Run release check (pending changes)' : 'Run release check'
+    this.runButton.textContent = pending ? 'Simulate patch (pending changes)' : 'Simulate patch'
   }
 
   renderFrame(frame: ProofFrameUi): void {
