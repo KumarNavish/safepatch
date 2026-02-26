@@ -302,14 +302,14 @@ export class SceneRenderer {
     const items =
       mode === 'geometry'
         ? [
-            { label: 'Raw Δ0', color: RAW_COLOR },
-            { label: 'Safe Δ*', color: SAFE_COLOR },
-            { label: 'Push-back', color: PUSH_COLOR },
+            { label: 'Proposed patch', color: RAW_COLOR },
+            { label: 'Certified patch', color: SAFE_COLOR },
+            { label: 'Policy push-back', color: PUSH_COLOR },
           ]
         : [
-            { label: 'Raw Δ0', color: RAW_COLOR },
-            { label: 'Corrections', color: PUSH_COLOR },
-            { label: 'Safe Δ*', color: SAFE_COLOR },
+            { label: 'Proposed patch', color: RAW_COLOR },
+            { label: 'Policy corrections', color: PUSH_COLOR },
+            { label: 'Certified patch', color: SAFE_COLOR },
           ]
 
     let cursorX = rect.x + 10
@@ -350,6 +350,15 @@ export class SceneRenderer {
     this.ctx.strokeStyle = FEASIBLE_STROKE
     this.ctx.lineWidth = 1.5
     this.ctx.stroke()
+
+    const anchor = mapper.worldToCanvas(vec(0.02 * mapper.worldRadius, -0.08 * mapper.worldRadius))
+    this.drawLabel({
+      anchor,
+      text: 'ship-safe zone',
+      color: '#0f8f74',
+      preferredDx: 10,
+      preferredDy: 10,
+    })
   }
 
   private drawBoundaries(input: {
@@ -461,7 +470,7 @@ export class SceneRenderer {
         if (!input.dragActive) {
           this.drawLabel({
             anchor: hitCanvas,
-            text: 'constraint hit',
+            text: 'policy wall',
             color: PUSH_COLOR,
             preferredDx: 10,
             preferredDy: -30,
@@ -498,7 +507,7 @@ export class SceneRenderer {
 
     this.drawLabel({
       anchor: input.mapper.worldToCanvas(rawWorld),
-      text: 'raw Δ0',
+      text: 'proposed patch',
       color: RAW_COLOR,
       preferredDx: 10,
       preferredDy: 10,
@@ -506,7 +515,7 @@ export class SceneRenderer {
 
     this.drawLabel({
       anchor: input.mapper.worldToCanvas(safeWorld),
-      text: 'safe Δ*',
+      text: 'certified patch',
       color: SAFE_COLOR,
       preferredDx: 10,
       preferredDy: -18,
@@ -558,7 +567,7 @@ export class SceneRenderer {
         if (isFocused) {
           this.drawLabel({
             anchor: input.mapper.worldToCanvas(lerp(cursor, next, 0.5)),
-            text: `correction (λ=${lambda.toFixed(3)})`,
+            text: `policy correction (${lambda.toFixed(3)})`,
             color,
             preferredDx: 8,
             preferredDy: -20,
@@ -575,7 +584,7 @@ export class SceneRenderer {
 
     this.drawLabel({
       anchor: rawTip,
-      text: 'raw Δ0',
+      text: 'proposed patch',
       color: RAW_COLOR,
       preferredDx: 10,
       preferredDy: -18,
@@ -583,7 +592,7 @@ export class SceneRenderer {
 
     this.drawLabel({
       anchor: safeTip,
-      text: 'safe Δ*',
+      text: 'certified patch',
       color: SAFE_COLOR,
       preferredDx: 10,
       preferredDy: 8,

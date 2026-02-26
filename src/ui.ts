@@ -57,11 +57,6 @@ export class UIController {
   private readonly presetButtons: HTMLButtonElement[]
   private readonly modeButtons: HTMLButtonElement[]
 
-  private readonly inlineDeltaZero: HTMLElement
-  private readonly heroEquation: HTMLElement
-  private readonly projectionBadge: HTMLElement
-  private readonly tightnessFormula: HTMLElement
-
   private readonly presetNote: HTMLElement
   private readonly tightnessSlider: HTMLInputElement
   private readonly tightnessValue: HTMLElement
@@ -108,11 +103,6 @@ export class UIController {
     if (this.modeButtons.length === 0) {
       throw new Error('Missing mode buttons')
     }
-
-    this.inlineDeltaZero = this.getElement('inline-delta-zero')
-    this.heroEquation = this.getElement('hero-equation')
-    this.projectionBadge = this.getElement('projection-badge')
-    this.tightnessFormula = this.getElement('tightness-formula')
 
     this.presetNote = this.getElement('preset-note')
     this.tightnessSlider = this.getElement<HTMLInputElement>('tightness-slider')
@@ -250,8 +240,8 @@ export class UIController {
   setDragActive(active: boolean): void {
     this.dragHint.classList.toggle('active', active)
     this.dragHint.textContent = active
-      ? 'Dragging raw patch: watch queue impact and correction cost update instantly.'
-      : 'Direct manipulation: drag anywhere or grab the raw tip.'
+      ? 'Dragging proposal: release risk and queue impact are updating live.'
+      : 'Direct manipulation: drag the patch and watch the production outcome update live.'
   }
 
   renderOutcome(frame: OutcomeFrameUi): void {
@@ -291,7 +281,7 @@ export class UIController {
     if (items.length === 0) {
       const empty = document.createElement('p')
       empty.className = 'drag-hint'
-      empty.textContent = 'No active correction forces for this patch.'
+      empty.textContent = 'No active policy pressure for this patch.'
       this.forceBars.replaceChildren(empty)
       return
     }
@@ -318,7 +308,7 @@ export class UIController {
 
       const value = document.createElement('span')
       value.className = 'force-value'
-      this.renderTex(value, String.raw`\lambda = ${item.lambda.toFixed(3)}`, false)
+      value.textContent = `Pressure ${item.lambda.toFixed(3)}`
 
       button.append(labelWrap, value)
       return button
@@ -332,10 +322,6 @@ export class UIController {
   }
 
   private renderMathBase(): void {
-    this.renderTex(this.inlineDeltaZero, String.raw`\Delta_0`, false)
-    this.renderTex(this.heroEquation, String.raw`\Delta^\star=\Pi_{\mathcal{F}}(\Delta_0)`, true)
-    this.renderTex(this.projectionBadge, String.raw`\Delta^\star=\Pi_{\mathcal{F}}(\Delta_0)`, false)
-    this.renderTex(this.tightnessFormula, String.raw`\tau\uparrow \Rightarrow \varepsilon_k\downarrow`, false)
     this.renderTex(this.equationMain, String.raw`\Delta^\star = \Delta_0 + \sum_{k\in\mathcal{A}}\left(-\eta\,\lambda_k\,n_k\right)`, true)
     this.renderTex(this.equationSub, String.raw`\text{Interact to populate active correction terms.}`, true)
   }
@@ -344,7 +330,7 @@ export class UIController {
     if (terms.length === 0) {
       const empty = document.createElement('p')
       empty.className = 'math-note'
-      empty.textContent = 'No active constraints. Raw patch is already feasible.'
+      empty.textContent = 'No active policy terms. The proposal is already ship-safe.'
       this.equationTerms.replaceChildren(empty)
       return
     }

@@ -85,35 +85,6 @@ h1 {
   line-height: 1.58;
 }
 
-.math-inline {
-  display: inline-flex;
-  align-items: center;
-  margin: 0 0.12rem;
-}
-
-.math-inline .katex {
-  font-size: 1.02em;
-  color: #0f2f65;
-}
-
-.hero-equation {
-  margin: 0;
-  width: fit-content;
-  border: 1px solid #d7e4fa;
-  border-radius: 999px;
-  padding: 6px 12px;
-  background: #f6f9ff;
-}
-
-.hero-equation .katex {
-  font-size: 1em;
-  color: #1b3f7e;
-}
-
-.hero-equation .katex-display {
-  margin: 0;
-}
-
 .top-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 334px);
@@ -147,20 +118,6 @@ h1 {
   line-height: 1.42;
 }
 
-.projection-badge {
-  margin: 0;
-  width: fit-content;
-  border: 1px solid #d6e0f3;
-  border-radius: 999px;
-  padding: 4px 9px;
-  background: #fbfdff;
-}
-
-.projection-badge .katex {
-  font-size: 0.93em;
-  color: #1b3f7e;
-}
-
 .mode-toggle {
   background: #f6f9ff;
   border: 1px solid var(--line);
@@ -176,10 +133,10 @@ h1 {
   border-radius: 999px;
   background: transparent;
   color: #4f6b8f;
-  font-size: 0.68rem;
+  font-size: 0.64rem;
   font-weight: 600;
-  letter-spacing: 0.03em;
-  padding: 7px 12px;
+  letter-spacing: 0.05em;
+  padding: 7px 10px;
   cursor: pointer;
   transition: background 260ms var(--ease-standard), color 260ms var(--ease-standard), transform 260ms var(--ease-standard);
 }
@@ -417,20 +374,6 @@ h1 {
   color: #1f4f9d;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.68rem;
-}
-
-.tightness-formula {
-  margin: 0;
-  width: fit-content;
-  border: 1px solid #d6e2f6;
-  border-radius: 999px;
-  padding: 3px 8px;
-  background: #ffffff;
-}
-
-.tightness-formula .katex {
-  font-size: 0.89em;
-  color: #2f4f79;
 }
 
 input[type='range'] {

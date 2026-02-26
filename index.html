@@ -7,7 +7,7 @@
       name="description"
       content="SafePatch turns a risky LLM hotfix into the closest guardrail-safe patch with an immediate ship-or-hold explanation."
     />
-    <title>SafePatch | Interactive Projection Demo</title>
+    <title>SafePatch | Release Decision Studio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -20,43 +20,41 @@
     <main class="app-shell">
       <header class="hero">
         <p class="eyebrow">SafePatch</p>
-        <h1>Steer a patch. See if it can safely ship.</h1>
+        <h1>Can this hotfix ship safely right now?</h1>
         <p class="hero-copy">
-          Move <span id="inline-delta-zero" class="math-inline"></span> directly on the stage. SafePatch keeps as much useful
-          change as possible while enforcing release checks, then returns a ship/hold decision with reasons.
+          Drag the proposed patch directly on the stage. SafePatch automatically clamps unsafe movement and gives you an
+          immediate ship/hold decision with practical impact.
         </p>
-        <p id="hero-equation" class="hero-equation" aria-label="Projection equation"></p>
       </header>
 
       <section class="top-grid">
         <section class="stage-card" aria-label="SafePatch interaction stage">
           <div class="stage-header">
             <div class="stage-copy">
-              <p id="stage-caption" class="stage-caption">Drag the red tip. The safe blue patch updates continuously.</p>
-              <p id="projection-badge" class="projection-badge" aria-label="Projection badge"></p>
+              <p id="stage-caption" class="stage-caption">Drag the red tip. SafePatch continuously returns a certified patch.</p>
             </div>
 
             <div class="mode-toggle" role="group" aria-label="Visualization mode">
-              <button class="mode-btn active" data-mode="geometry" type="button">Geometry</button>
-              <button class="mode-btn" data-mode="forces" type="button">Forces</button>
+              <button class="mode-btn active" data-mode="geometry" type="button">Release Path</button>
+              <button class="mode-btn" data-mode="forces" type="button">Policy Pressure</button>
             </div>
           </div>
 
-          <canvas id="scene-canvas" class="scene-canvas" aria-label="Projection geometry and correction forces"></canvas>
+          <canvas id="scene-canvas" class="scene-canvas" aria-label="Patch proposal stage and policy correction view"></canvas>
 
-          <p id="drag-hint" class="drag-hint">Direct manipulation: drag anywhere or grab the raw tip.</p>
+          <p id="drag-hint" class="drag-hint">Direct manipulation: drag the patch and watch the production outcome update live.</p>
 
           <section class="impact-strip" aria-label="Immediate interaction impact">
             <article class="impact-card">
-              <p class="impact-label">Correction distance</p>
+              <p class="impact-label">Safety adjustment</p>
               <strong id="impact-correction" class="impact-value">--</strong>
             </article>
             <article class="impact-card">
-              <p class="impact-label">Queue load saved</p>
+              <p class="impact-label">Queue reduction</p>
               <strong id="impact-risk" class="impact-value">--</strong>
             </article>
             <article class="impact-card">
-              <p class="impact-label">Primary blocker</p>
+              <p class="impact-label">Blocking policy</p>
               <strong id="impact-blocker" class="impact-value impact-blocker">--</strong>
             </article>
           </section>
@@ -65,56 +63,55 @@
         </section>
 
         <aside class="control-card" aria-label="Simulation controls">
-          <p class="panel-kicker">Scenario presets</p>
+          <p class="panel-kicker">Traffic context</p>
           <div class="preset-row" role="group" aria-label="Traffic scenario presets">
-            <button class="preset-btn" data-preset="normal" data-pressure="0.24" type="button">Normal</button>
-            <button class="preset-btn active" data-preset="spike" data-pressure="0.56" type="button">Spike</button>
+            <button class="preset-btn" data-preset="normal" data-pressure="0.24" type="button">Steady</button>
+            <button class="preset-btn active" data-preset="spike" data-pressure="0.56" type="button">Surge</button>
             <button class="preset-btn" data-preset="incident" data-pressure="0.9" type="button">Incident</button>
           </div>
 
-          <p id="preset-note" class="preset-note">Spike traffic: moderate pressure where projection usually matters.</p>
+          <p id="preset-note" class="preset-note">Surge traffic: release decisions need stronger policy correction.</p>
 
           <section class="tightness-block">
             <div class="tightness-head">
-              <label for="tightness-slider">Policy tightness</label>
+              <label for="tightness-slider">Policy strictness</label>
               <span id="tightness-value" class="tightness-value">62%</span>
             </div>
-            <p id="tightness-formula" class="tightness-formula" aria-label="Tightness formula"></p>
             <input id="tightness-slider" type="range" min="20" max="90" value="62" />
           </section>
 
-          <button id="replay-button" class="replay-btn" type="button">Replay teaching animation</button>
+          <button id="replay-button" class="replay-btn" type="button">Replay release walkthrough</button>
         </aside>
       </section>
 
       <section class="outcome-strip" aria-label="Decision outcome">
         <article id="decision-panel" class="outcome-card decision-card hold">
           <p id="decision-pill" class="decision-pill hold">HOLD</p>
-          <h2 id="decision-title">Needs projection tuning</h2>
-          <p id="decision-detail">Drag Δ0 and observe whether guardrail violations are corrected without losing useful gain.</p>
+          <h2 id="decision-title">Needs safer patch direction</h2>
+          <p id="decision-detail">Drag the proposal and verify policy checks before shipping.</p>
         </article>
 
         <article class="outcome-card">
-          <p class="metric-label">Checks passed</p>
+          <p class="metric-label">Policies satisfied</p>
           <strong id="checks-passed" class="metric-value">--</strong>
-          <p id="readiness-note" class="metric-note">Readiness: --</p>
+          <p id="readiness-note" class="metric-note">Release confidence: --</p>
         </article>
 
         <article class="outcome-card">
-          <p class="metric-label">Expected queue peak</p>
+          <p class="metric-label">Queue peak forecast</p>
           <strong id="queue-peak" class="metric-value">--</strong>
-          <p class="metric-note">Raw -> Safe</p>
+          <p class="metric-note">Proposed -> Certified</p>
         </article>
 
         <article class="outcome-card">
-          <p class="metric-label">Useful gain kept</p>
+          <p class="metric-label">Fix effectiveness kept</p>
           <strong id="retained-value" class="metric-value">--</strong>
-          <p class="metric-note">Linear objective retained</p>
+          <p class="metric-note">Expected product benefit retained</p>
         </article>
       </section>
 
       <details class="details-panel">
-        <summary>Details</summary>
+        <summary>Why / Math / Export</summary>
 
         <section class="details-grid">
           <article class="detail-card">
@@ -142,11 +139,11 @@
         </section>
 
         <section class="math-card">
-          <h3>Projection decomposition</h3>
+          <h3>Math (optional)</h3>
           <div id="equation-main" class="equation"></div>
           <div id="equation-sub" class="equation equation-sub"></div>
           <div id="equation-terms" class="equation-terms"></div>
-          <p class="math-note">Each active λ term is a real correction vector shown in Forces mode.</p>
+          <p class="math-note">Each active term corresponds to a correction vector in Policy Pressure view.</p>
         </section>
       </details>
     </main>

@@ -28,45 +28,45 @@ const PRESETS: Record<PresetId, PresetConfig> = {
   normal: {
     id: 'normal',
     pressure: 0.24,
-    note: 'Normal traffic: lower external pressure, wider room for feasible motion.',
+    note: 'Steady traffic: most safe proposals retain strong product benefit.',
   },
   spike: {
     id: 'spike',
     pressure: 0.56,
-    note: 'Spike traffic: moderate pressure where projection gives visible safety gains.',
+    note: 'Surge traffic: unsafe proposals create visible policy and queue pressure.',
   },
   incident: {
     id: 'incident',
     pressure: 0.9,
-    note: 'Incident traffic: high pressure, unsafe raw steps can escalate quickly.',
+    note: 'Incident response: strict corrections are needed before anything ships.',
   },
 }
 
 const BASE_HALFSPACES: Halfspace[] = [
   {
     id: 'g1',
-    label: 'toxicity budget',
+    label: 'abuse escalation',
     normal: normalize(vec(0.94, 0.34)),
     bound: 0.72,
     active: true,
   },
   {
     id: 'g2',
-    label: 'hallucination budget',
+    label: 'factual reliability',
     normal: normalize(vec(0.26, 1)),
     bound: 0.66,
     active: true,
   },
   {
     id: 'g3',
-    label: 'privacy guardrail',
+    label: 'privacy exposure',
     normal: normalize(vec(-0.89, 0.46)),
     bound: 0.73,
     active: true,
   },
   {
     id: 'g4',
-    label: 'style drift guardrail',
+    label: 'brand voice drift',
     normal: normalize(vec(0.73, -0.68)),
     bound: 0.64,
     active: true,
@@ -258,25 +258,25 @@ function scenarioEvaluation(state: InteractiveState): Evaluation {
   const riskDropPct = clampRange(((rawRisk - safeRisk) / Math.max(rawRisk, 0.05)) * 100, -200, 100)
 
   let decisionTone: 'ship' | 'hold' = 'ship'
-  let decisionTitle = 'Ship projected patch'
-  let decisionDetail = 'Projected step is feasible and keeps practical value.'
+  let decisionTitle = 'Ship certified patch'
+  let decisionDetail = 'Certified patch passes policies and keeps useful product impact.'
 
   if (!projection.ship) {
     decisionTone = 'hold'
     decisionTitle = 'Hold deployment'
-    decisionDetail = projection.reason ?? 'No feasible projected patch under current constraints.'
+    decisionDetail = projection.reason ?? 'No certifiable patch under the current policy envelope.'
   } else if (safeViolationCount > 0) {
     decisionTone = 'hold'
     decisionTitle = 'Hold deployment'
-    decisionDetail = `Projected patch still violates ${safeViolationCount} check${safeViolationCount > 1 ? 's' : ''}.`
+    decisionDetail = `Certified patch still fails ${safeViolationCount} polic${safeViolationCount > 1 ? 'ies' : 'y'}.`
   } else if (retainedGain < 0.34) {
     decisionTone = 'hold'
     decisionTitle = 'Hold deployment'
-    decisionDetail = `Safe projection keeps only ${Math.round(retainedGain * 100)}% of intended gain.`
+    decisionDetail = `Certified patch keeps only ${Math.round(retainedGain * 100)}% of intended product benefit.`
   } else if (queueSafePeak > queueRawPeak + 20) {
     decisionTone = 'hold'
     decisionTitle = 'Hold deployment'
-    decisionDetail = 'Projection is safe but queue pressure is not improving enough.'
+    decisionDetail = 'Patch is safe but queue pressure is not improving enough to justify release.'
   }
 
   const queueImprovementRatio = clampRange((queueRawPeak - queueSafePeak) / Math.max(queueRawPeak, 1), -0.4, 1)
@@ -303,37 +303,37 @@ function scenarioEvaluation(state: InteractiveState): Evaluation {
     : null
 
   const whyItems: string[] = [
-    `Raw checks passed: ${checksRawPassed}/${activeCheckCount}; projected checks passed: ${checksSafePassed}/${activeCheckCount}.`,
+    `Policy status moved from ${checksRawPassed}/${activeCheckCount} to ${checksSafePassed}/${activeCheckCount} satisfied checks.`,
     activeLabels.length > 0
-      ? `Active correction set: ${activeLabels.join(', ')}.`
-      : 'No active correction force: raw patch is already inside all active checks.',
-    `Correction cost is ${Math.round(correctionNormRatio * 100)}% of raw patch magnitude.`,
-    `Expected queue peak: ${queueRawPeak.toLocaleString()} -> ${queueSafePeak.toLocaleString()}; retained gain ${Math.round(
+      ? `Main policy pressure came from: ${activeLabels.join(', ')}.`
+      : 'No policy pressure was activated because the proposed patch was already safe.',
+    `Safety adjustment consumed ${Math.round(correctionNormRatio * 100)}% of the proposed patch movement.`,
+    `Queue peak forecast moved ${queueRawPeak.toLocaleString()} -> ${queueSafePeak.toLocaleString()}, keeping ${Math.round(
       retainedGain * 100,
-    )}%.`,
+    )}% of expected product gain.`,
   ]
 
   const actionItems: string[] =
     decisionTone === 'ship'
       ? [
-          'Ship projected patch through staged canary rollout.',
-          'Monitor the dominant active check and queue peak for the first 15 minutes.',
-          'Keep rollback hook armed if queue rises above threshold.',
+          'Ship the certified patch behind a staged canary.',
+          'Monitor the dominant blocking policy and queue peak for the first 15 minutes.',
+          'Keep rollback automation armed if queue exceeds threshold.',
         ]
       : [
-          'Do not ship yet in this operating point.',
+          'Do not ship this direction yet.',
           dominantConstraintLabel
-            ? `Drag Δ0 away from "${dominantConstraintLabel}" pressure until correction cost drops.`
-            : 'Drag Δ0 toward the feasible region or reduce policy tightness.',
-          'Replay the teaching sequence to inspect the dominant correction force.',
+            ? `Drag the proposed patch away from "${dominantConstraintLabel}" pressure until adjustment cost drops.`
+            : 'Drag the proposal toward the safe zone or reduce policy strictness.',
+          'Replay the walkthrough to inspect where policy pressure is injected.',
         ]
 
   const memoText = [
     `SafePatch decision: ${decisionTone.toUpperCase()}.`,
-    `Preset: ${normalizedState.presetId}. Tightness: ${Math.round(normalizedState.tightness * 100)}%.`,
-    `Checks: ${checksRawPassed}/${activeCheckCount} -> ${checksSafePassed}/${activeCheckCount}.`,
-      `Queue peak: ${queueRawPeak} -> ${queueSafePeak}.`,
-    `Retained gain: ${Math.round(retainedGain * 100)}%.`,
+    `Traffic context: ${normalizedState.presetId}. Policy strictness: ${Math.round(normalizedState.tightness * 100)}%.`,
+    `Policy checks: ${checksRawPassed}/${activeCheckCount} -> ${checksSafePassed}/${activeCheckCount}.`,
+    `Queue peak forecast: ${queueRawPeak} -> ${queueSafePeak}.`,
+    `Product gain retained: ${Math.round(retainedGain * 100)}%.`,
     `Decision detail: ${decisionDetail}`,
   ].join(' ')
 
@@ -432,25 +432,27 @@ function buildOutcomeFrame(
 
   let stageCaption: string
   if (mode === 'forces') {
-    stageCaption = 'Forces view: each λ bar is a correction that pushes the patch back inside policy.'
+    stageCaption = 'Policy Pressure view: each bar shows how strongly a policy pushes back on the proposal.'
   } else if (teachingProgress < 0.28) {
-    stageCaption = 'Step 1: raw patch grows from the origin.'
+    stageCaption = 'Step 1: propose a patch direction.'
   } else if (teachingProgress < 0.46) {
-    stageCaption = 'Step 2: raw patch crosses a guardrail boundary.'
+    stageCaption = 'Step 2: proposal hits a policy wall.'
   } else if (teachingProgress < 0.72) {
-    stageCaption = 'Step 3: active check applies a push-back correction.'
+    stageCaption = 'Step 3: SafePatch injects policy corrections.'
   } else if (teachingProgress < 1) {
-    stageCaption = 'Step 4: safe projected patch lands inside the feasible region.'
+    stageCaption = 'Step 4: certified patch lands in the ship-safe zone.'
   } else if (dragging) {
     const queueNarrative =
       evaluation.queuePeakDelta >= 0
-        ? `${Math.abs(evaluation.queuePeakDelta).toLocaleString()} fewer queued`
-        : `${Math.abs(evaluation.queuePeakDelta).toLocaleString()} more queued`
-    stageCaption = `Live result: ${queueNarrative}; correction cost ${evaluation.correctionNorm.toFixed(3)}.`
+        ? `${Math.abs(evaluation.queuePeakDelta).toLocaleString()} fewer requests queued`
+        : `${Math.abs(evaluation.queuePeakDelta).toLocaleString()} more requests queued`
+    stageCaption = `Live release impact: ${queueNarrative}; safety adjustment ${Math.round(
+      evaluation.correctionNormRatio * 100,
+    )}%.`
   } else if (dominantLabel && dominantLambda > PROJECTION_TOLERANCE) {
-    stageCaption = `Dominant blocker right now: ${dominantLabel} (λ=${dominantLambda.toFixed(3)}).`
+    stageCaption = `Main blocker right now: ${dominantLabel} (pressure ${dominantLambda.toFixed(3)}).`
   } else {
-    stageCaption = 'Raw patch is already feasible, so no correction force is needed.'
+    stageCaption = 'Proposal is already ship-safe. No policy correction needed.'
   }
 
   return {
@@ -462,14 +464,14 @@ function buildOutcomeFrame(
     }`,
     queueText: `${evaluation.queueRawPeak.toLocaleString()} -> ${evaluation.queueSafePeak.toLocaleString()}`,
     retainedText: `${Math.round(evaluation.retainedGain * 100)}%`,
-    readinessText: `Readiness: ${evaluation.readiness}/100`,
+    readinessText: `Release confidence: ${evaluation.readiness}/100`,
     stageCaption,
-    impactCorrectionText: `${evaluation.correctionNorm.toFixed(3)} (${Math.round(evaluation.correctionNormRatio * 100)}%)`,
+    impactCorrectionText: `${Math.round(evaluation.correctionNormRatio * 100)}% clamp`,
     impactRiskText:
       evaluation.queuePeakDelta >= 0
-        ? `${Math.abs(evaluation.queuePeakDelta).toLocaleString()} fewer`
-        : `${Math.abs(evaluation.queuePeakDelta).toLocaleString()} more`,
-    impactBlockerText: evaluation.dominantConstraintLabel ?? 'No active blocker',
+        ? `${Math.abs(evaluation.queuePeakDelta).toLocaleString()} avoided`
+        : `${Math.abs(evaluation.queuePeakDelta).toLocaleString()} added`,
+    impactBlockerText: evaluation.dominantConstraintLabel ?? 'No blocking policy',
   }
 }
 
