@@ -48,8 +48,6 @@ interface TeachingBeats {
 const RAW_COLOR = '#e44f73'
 const SAFE_COLOR = '#2b67f6'
 const PUSH_COLOR = '#ea9a2d'
-const GRID_COLOR = 'rgba(122, 144, 176, 0.12)'
-const AXIS_COLOR = 'rgba(100, 126, 164, 0.38)'
 const FEASIBLE_FILL = 'rgba(21, 169, 143, 0.11)'
 const FEASIBLE_STROKE = 'rgba(15, 143, 116, 0.68)'
 const LABEL_BG = 'rgba(255, 255, 255, 0.95)'
@@ -181,8 +179,7 @@ export class SceneRenderer {
     const visibleSet = new Set(input.visibleCorrectionIds)
     const primaryDiagnostic = this.primaryViolatedDiagnostic(input.projection)
 
-    this.drawGrid(plotRect, 5, 5)
-    this.drawAxes(plotRect, mapper)
+    this.drawStageSurface(plotRect)
     this.drawFeasibleRegion(activeHalfspaces, mapper)
 
     this.drawBoundaries({
@@ -291,47 +288,25 @@ export class SceneRenderer {
     }
   }
 
-  private drawGrid(rect: Rect, vertical: number, horizontal: number): void {
-    for (let i = 0; i <= vertical; i += 1) {
-      const x = rect.x + (i / vertical) * rect.width
-      this.ctx.beginPath()
-      this.ctx.moveTo(x, rect.y)
-      this.ctx.lineTo(x, rect.y + rect.height)
-      this.ctx.strokeStyle = GRID_COLOR
-      this.ctx.lineWidth = 1
-      this.ctx.stroke()
-    }
+  private drawStageSurface(rect: Rect): void {
+    const gradient = this.ctx.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.height)
+    gradient.addColorStop(0, '#ffffff')
+    gradient.addColorStop(1, '#f8fbff')
+    this.ctx.fillStyle = gradient
+    this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
 
-    for (let i = 0; i <= horizontal; i += 1) {
-      const y = rect.y + (i / horizontal) * rect.height
-      this.ctx.beginPath()
-      this.ctx.moveTo(rect.x, y)
-      this.ctx.lineTo(rect.x + rect.width, y)
-      this.ctx.strokeStyle = GRID_COLOR
-      this.ctx.lineWidth = 1
-      this.ctx.stroke()
-    }
-  }
-
-  private drawAxes(rect: Rect, mapper: Mapper): void {
-    const x0 = mapper.worldToCanvas(vec(-mapper.worldRadius, 0))
-    const x1 = mapper.worldToCanvas(vec(mapper.worldRadius, 0))
-    const y0 = mapper.worldToCanvas(vec(0, -mapper.worldRadius))
-    const y1 = mapper.worldToCanvas(vec(0, mapper.worldRadius))
-
-    this.ctx.beginPath()
-    this.ctx.moveTo(x0.x, x0.y)
-    this.ctx.lineTo(x1.x, x1.y)
-    this.ctx.strokeStyle = AXIS_COLOR
-    this.ctx.lineWidth = 1.25
-    this.ctx.stroke()
-
-    this.ctx.beginPath()
-    this.ctx.moveTo(y0.x, y0.y)
-    this.ctx.lineTo(y1.x, y1.y)
-    this.ctx.strokeStyle = AXIS_COLOR
-    this.ctx.lineWidth = 1.25
-    this.ctx.stroke()
+    const halo = this.ctx.createRadialGradient(
+      rect.x + rect.width * 0.72,
+      rect.y + rect.height * 0.25,
+      6,
+      rect.x + rect.width * 0.72,
+      rect.y + rect.height * 0.25,
+      rect.width * 0.55,
+    )
+    halo.addColorStop(0, 'rgba(43, 103, 246, 0.10)')
+    halo.addColorStop(1, 'rgba(43, 103, 246, 0)')
+    this.ctx.fillStyle = halo
+    this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
 
     this.ctx.beginPath()
     this.ctx.rect(rect.x, rect.y, rect.width, rect.height)
@@ -385,6 +360,11 @@ export class SceneRenderer {
       const baseColor = this.colorForConstraint(halfspace.id, index)
       const isActive = input.activeSet.has(halfspace.id)
       const isPrimary = input.primaryDiagnostic?.id === halfspace.id
+      const isHighlighted = input.highlightedConstraintId === halfspace.id
+
+      if (input.mode === 'geometry' && input.primaryDiagnostic && !isPrimary && !isHighlighted) {
+        return
+      }
 
       let stroke = 'rgba(143, 161, 186, 0.42)'
       let width = 1.2
@@ -400,9 +380,12 @@ export class SceneRenderer {
       } else if (isPrimary) {
         stroke = withAlpha(PUSH_COLOR, 0.52 + input.hitBeat * 0.4)
         width = 1.4 + input.hitBeat * 0.9
+      } else if (input.mode === 'geometry') {
+        stroke = 'rgba(143, 161, 186, 0.16)'
+        width = 1
       }
 
-      if (input.highlightedConstraintId === halfspace.id) {
+      if (isHighlighted) {
         stroke = withAlpha(baseColor, 0.96)
         width = 2.3
       }

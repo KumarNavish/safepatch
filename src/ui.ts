@@ -24,8 +24,8 @@ export interface ForceBarUi {
 export interface MathTermUi {
   id: string
   label: string
-  lambdaText: string
-  vectorText: string
+  lambdaTex: string
+  vectorTex: string
   color: string
   active: boolean
 }
@@ -365,13 +365,21 @@ export class UIController {
 
       const lambda = document.createElement('p')
       lambda.className = 'math-term-lambda'
-      lambda.textContent = term.lambdaText
+      lambda.innerHTML = katex.renderToString(term.lambdaTex, {
+        displayMode: false,
+        throwOnError: false,
+        output: 'html',
+      })
 
       head.append(label, lambda)
 
       const vector = document.createElement('p')
       vector.className = 'math-term-vector'
-      vector.textContent = term.vectorText
+      vector.innerHTML = katex.renderToString(term.vectorTex, {
+        displayMode: false,
+        throwOnError: false,
+        output: 'html',
+      })
 
       card.append(head, vector)
       return card

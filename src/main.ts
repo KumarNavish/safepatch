@@ -389,8 +389,10 @@ function buildMathTerms(evaluation: Evaluation): MathTermUi[] {
       return {
         id: diagnostic.id,
         label: diagnostic.label,
-        lambdaText: `λ ${diagnostic.lambda.toFixed(3)}`,
-        vectorText: `-η λ n = (${correction.x.toFixed(3)}, ${correction.y.toFixed(3)})`,
+        lambdaTex: String.raw`\lambda_{${diagnostic.id}}=${diagnostic.lambda.toFixed(3)}`,
+        vectorTex: String.raw`-\eta\,\lambda_{${diagnostic.id}}\,n_{${diagnostic.id}}=\left(${correction.x.toFixed(
+          3,
+        )},\;${correction.y.toFixed(3)}\right)`,
         color: forceColor(diagnostic.id),
         active: evaluation.projection.activeSetIds.includes(diagnostic.id),
       }
@@ -425,9 +427,11 @@ function buildOutcomeFrame(
   } else if (teachingProgress < 1) {
     stageCaption = 'Step 4: Corrected patch Δ* lands inside the feasible region.'
   } else if (dragging) {
-    stageCaption = `Dragging Δ0: queue delta ${evaluation.queuePeakDelta >= 0 ? '-' : '+'}${Math.abs(
-      evaluation.queuePeakDelta,
-    ).toLocaleString()} and correction ${evaluation.correctionNorm.toFixed(3)}.`
+    const queueNarrative =
+      evaluation.queuePeakDelta >= 0
+        ? `${Math.abs(evaluation.queuePeakDelta).toLocaleString()} fewer queued`
+        : `${Math.abs(evaluation.queuePeakDelta).toLocaleString()} more queued`
+    stageCaption = `Dragging Δ0: ${queueNarrative}, correction cost ${evaluation.correctionNorm.toFixed(3)}.`
   } else if (dominantLabel && dominantLambda > PROJECTION_TOLERANCE) {
     stageCaption = `Dominant correction: ${dominantLabel} (λ=${dominantLambda.toFixed(3)}).`
   } else {
@@ -446,7 +450,10 @@ function buildOutcomeFrame(
     readinessText: `Readiness: ${evaluation.readiness}/100`,
     stageCaption,
     impactCorrectionText: `${evaluation.correctionNorm.toFixed(3)} (${Math.round(evaluation.correctionNormRatio * 100)}%)`,
-    impactRiskText: `${evaluation.riskDropPct >= 0 ? '+' : ''}${Math.round(evaluation.riskDropPct)}%`,
+    impactRiskText:
+      evaluation.queuePeakDelta >= 0
+        ? `${Math.abs(evaluation.queuePeakDelta).toLocaleString()} fewer`
+        : `${Math.abs(evaluation.queuePeakDelta).toLocaleString()} more`,
     impactBlockerText: evaluation.dominantConstraintLabel ?? 'No active blocker',
   }
 }

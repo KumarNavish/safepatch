@@ -206,6 +206,9 @@ h1 {
 .impact-blocker {
   color: #9a5f2a;
   font-size: 0.86rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .force-bars {
@@ -569,6 +572,15 @@ input[type='range'] {
   overflow-x: auto;
 }
 
+.equation .katex {
+  font-size: 1.03em;
+  color: #17345f;
+}
+
+.equation .katex-display {
+  margin: 0.24rem 0;
+}
+
 .equation-sub {
   margin-top: 8px;
 }
@@ -610,15 +622,15 @@ input[type='range'] {
 .math-term-lambda {
   margin: 0;
   color: #1f4f9d;
-  font-family: 'IBM Plex Mono', monospace;
   font-size: 0.62rem;
+  line-height: 1.2;
 }
 
 .math-term-vector {
   margin: 0;
   color: var(--ink-soft);
-  font-family: 'IBM Plex Mono', monospace;
   font-size: 0.63rem;
+  line-height: 1.3;
 }
 
 .math-note {
