@@ -5,170 +5,128 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="SafePatch turns a risky LLM hotfix into a guardrail-safe patch and returns a ship or hold decision with impact estimates."
+      content="SafePatch turns a risky LLM hotfix into the closest guardrail-safe patch with an immediate ship-or-hold explanation."
     />
-    <title>SafePatch | Release Check</title>
+    <title>SafePatch | Interactive Projection Demo</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600;6..72,700&family=Sora:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Newsreader:opsz,wght@6..72,600;6..72,700&family=Sora:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="product">
-      <header class="intro">
-        <p class="eyebrow">SafePatch release check</p>
-        <h1>See the unsafe part of a patch get corrected in real time.</h1>
-        <p class="intro-text">
-          Problem: raw hotfixes can fix one issue while breaking policy checks. Solution: SafePatch keeps the patch as
-          close as possible while satisfying checks. Result: ship or hold, with reasons.
+    <main class="app-shell">
+      <header class="hero">
+        <p class="eyebrow">SafePatch</p>
+        <h1>Drag a risky patch. Ship the closest safe one.</h1>
+        <p class="hero-copy">
+          Raw patch (<strong>Δ0</strong>) can cross guardrails. SafePatch continuously projects it to the nearest feasible
+          patch (<strong>Δ*</strong>) and returns a clear ship/hold decision with reasons.
         </p>
       </header>
 
-      <section class="workspace">
-        <section class="stage" aria-label="SafePatch simulation stage">
-          <div class="stage-head">
-            <p class="stage-kicker">Mechanism</p>
-            <p id="stage-caption" class="stage-caption">Simulate patch to watch raw step, boundary hit, and safe projection.</p>
+      <section class="top-grid">
+        <section class="stage-card" aria-label="SafePatch interaction stage">
+          <div class="stage-header">
+            <p id="stage-caption" class="stage-caption">Drag Δ0. SafePatch updates the safe projection continuously.</p>
+
+            <div class="mode-toggle" role="group" aria-label="Visualization mode">
+              <button class="mode-btn active" data-mode="geometry" type="button">Geometry</button>
+              <button class="mode-btn" data-mode="forces" type="button">Forces</button>
+            </div>
           </div>
 
-          <div class="proof-canvas">
-            <canvas id="scene-canvas" class="scene" aria-label="Raw patch and projected safe patch simulation"></canvas>
-          </div>
+          <canvas id="scene-canvas" class="scene-canvas" aria-label="Projection geometry and correction forces"></canvas>
 
-          <section id="decision-panel" class="decision-banner hold">
-            <div class="status-copy">
-              <p id="decision-pill" class="decision-pill hold">HOLD</p>
-              <h2 id="decision-title">Run release check</h2>
-              <p id="decision-detail" class="status-detail">Use presets and run the simulation to get a decision and rationale.</p>
-            </div>
+          <p id="drag-hint" class="drag-hint">Drag directly on the canvas or grab the Δ0 tip.</p>
 
-            <div class="status-side" aria-label="Readiness score">
-              <p class="status-label">Readiness</p>
-              <strong id="readiness-score" class="readiness-score">--</strong>
-              <p id="readiness-note" class="status-note">Awaiting simulation.</p>
-            </div>
-          </section>
-
-          <section class="scoreboard" aria-label="Decision metrics">
-            <article class="score-card">
-              <p class="score-label">Checks passed</p>
-              <strong id="checks-passed" class="score-value">--</strong>
-            </article>
-            <article class="score-card">
-              <p class="score-label">Expected peak queue</p>
-              <strong id="queue-peak" class="score-value">--</strong>
-            </article>
-            <article class="score-card">
-              <p class="score-label">Useful gain kept</p>
-              <strong id="retained-value" class="score-value">--</strong>
-            </article>
-          </section>
+          <section id="force-bars" class="force-bars" aria-label="Constraint correction strengths"></section>
         </section>
 
-        <aside class="controls">
-          <p class="controls-kicker">Scenario</p>
-          <h2>Simulate release</h2>
-          <p class="controls-intro">Pick a preset and simulate. Advanced knobs are optional.</p>
-
-          <div class="field-card">
-            <p class="field-title">Traffic preset</p>
-            <div class="scenario-buttons" role="group" aria-label="Traffic preset">
-              <button class="scenario-btn" data-pressure="0.22" type="button">Normal</button>
-              <button class="scenario-btn active" data-pressure="0.56" type="button">Spike</button>
-              <button class="scenario-btn" data-pressure="0.9" type="button">Incident</button>
-            </div>
-            <p id="scenario-note" class="field-note">Traffic spike: meaningful pressure, still recoverable.</p>
+        <aside class="control-card" aria-label="Simulation controls">
+          <p class="panel-kicker">Scenario presets</p>
+          <div class="preset-row" role="group" aria-label="Traffic scenario presets">
+            <button class="preset-btn" data-preset="normal" data-pressure="0.24" type="button">Normal</button>
+            <button class="preset-btn active" data-preset="spike" data-pressure="0.56" type="button">Spike</button>
+            <button class="preset-btn" data-preset="incident" data-pressure="0.9" type="button">Incident</button>
           </div>
 
-          <button id="run-button" class="primary-btn" type="button">Simulate patch</button>
+          <p id="preset-note" class="preset-note">Spike traffic: moderate pressure where projection usually matters.</p>
 
-          <details class="advanced-panel">
-            <summary>Advanced controls</summary>
-
-            <div class="field-card">
-              <div class="slider-row">
-                <label for="urgency-slider">Hotfix urgency</label>
-                <span id="urgency-value" class="slider-value">58%</span>
-              </div>
-              <input id="urgency-slider" type="range" min="0" max="100" value="58" />
-              <p id="urgency-note" class="field-note">Balanced urgency: enough room to trade risk for reliability.</p>
+          <section class="tightness-block">
+            <div class="tightness-head">
+              <label for="tightness-slider">Policy tightness</label>
+              <span id="tightness-value" class="tightness-value">62%</span>
             </div>
+            <input id="tightness-slider" type="range" min="20" max="90" value="62" />
+          </section>
 
-            <div class="field-card">
-              <div class="slider-row">
-                <label for="strictness-slider">Policy strictness</label>
-                <span id="strictness-value" class="slider-value">62%</span>
-              </div>
-              <input id="strictness-slider" type="range" min="0" max="100" value="62" />
-              <p id="strictness-note" class="field-note">Moderate strictness keeps core checks active.</p>
-            </div>
-
-            <div class="action-buttons">
-              <button id="autotune-button" class="secondary-btn" type="button">Auto-set safest knobs</button>
-              <button id="reset-button" class="secondary-btn" type="button">Reset controls</button>
-              <button id="replay-button" class="secondary-btn" type="button">Replay animation</button>
-            </div>
-
-            <p id="recommended-controls" class="recommended-controls">
-              Recommended settings appear after each simulation.
-            </p>
-          </details>
-
-          <details class="explain-panel">
-            <summary>Decision breakdown</summary>
-
-            <div class="ops-grid">
-              <article class="ops-card">
-                <h3>Why this decision</h3>
-                <ul id="why-list" class="ops-list">
-                  <li>Run the simulation to generate rationale.</li>
-                </ul>
-              </article>
-              <article class="ops-card">
-                <h3>Rollout checks</h3>
-                <ul id="gate-list" class="ops-list">
-                  <li>Run the simulation to generate rollout gates.</li>
-                </ul>
-              </article>
-            </div>
-
-            <h3 class="mini-title">Execution steps</h3>
-            <ul id="action-list" class="action-list">
-              <li>Choose scenario and click Run release check.</li>
-            </ul>
-
-            <div class="memo-card">
-              <div class="memo-head">
-                <p class="field-title">Release memo</p>
-                <button id="copy-memo-button" class="copy-memo" type="button">Copy memo</button>
-              </div>
-              <p id="memo-text" class="memo-text">Memo appears after simulation.</p>
-            </div>
-
-            <button id="export-button" class="export wide" type="button">Export decision JSON</button>
-          </details>
-
-          <details class="math-details">
-            <summary>Projection math</summary>
-            <section class="math-panel" aria-label="SafePatch optimization equations">
-              <p class="math-intro">SafePatch keeps the update as close as possible to the raw step while satisfying all active checks.</p>
-              <div class="equation-stack">
-                <article class="equation-block">
-                  <p class="equation-title">Raw update</p>
-                  <div id="equation-raw" class="equation"></div>
-                </article>
-                <article class="equation-block">
-                  <p class="equation-title">Safe projection</p>
-                  <div id="equation-qp" class="equation"></div>
-                </article>
-              </div>
-            </section>
-          </details>
+          <button id="replay-button" class="replay-btn" type="button">Replay teaching animation</button>
         </aside>
       </section>
+
+      <section class="outcome-strip" aria-label="Decision outcome">
+        <article id="decision-panel" class="outcome-card decision-card hold">
+          <p id="decision-pill" class="decision-pill hold">HOLD</p>
+          <h2 id="decision-title">Needs projection tuning</h2>
+          <p id="decision-detail">Drag Δ0 and observe whether guardrail violations are corrected without losing useful gain.</p>
+        </article>
+
+        <article class="outcome-card">
+          <p class="metric-label">Checks passed</p>
+          <strong id="checks-passed" class="metric-value">--</strong>
+          <p id="readiness-note" class="metric-note">Readiness: --</p>
+        </article>
+
+        <article class="outcome-card">
+          <p class="metric-label">Expected queue peak</p>
+          <strong id="queue-peak" class="metric-value">--</strong>
+          <p class="metric-note">Raw -> Safe</p>
+        </article>
+
+        <article class="outcome-card">
+          <p class="metric-label">Useful gain kept</p>
+          <strong id="retained-value" class="metric-value">--</strong>
+          <p class="metric-note">Linear objective retained</p>
+        </article>
+      </section>
+
+      <details class="details-panel">
+        <summary>Details</summary>
+
+        <section class="details-grid">
+          <article class="detail-card">
+            <h3>Why this decision</h3>
+            <ul id="why-list" class="detail-list">
+              <li>Start dragging to generate rationale.</li>
+            </ul>
+          </article>
+
+          <article class="detail-card">
+            <h3>Next actions</h3>
+            <ul id="action-list" class="detail-list">
+              <li>Adjust patch direction directly on the stage.</li>
+            </ul>
+          </article>
+        </section>
+
+        <section class="memo-card">
+          <div class="memo-head">
+            <p class="memo-title">Release memo</p>
+            <button id="copy-memo-button" class="mini-btn" type="button">Copy memo</button>
+          </div>
+          <p id="memo-text" class="memo-text">Memo updates as you interact.</p>
+          <button id="export-button" class="export-btn" type="button">Export decision JSON</button>
+        </section>
+
+        <section class="math-card">
+          <h3>Projection equation</h3>
+          <div id="equation-main" class="equation"></div>
+          <p class="math-note">Forces view shows each active correction term and its λ strength.</p>
+        </section>
+      </details>
     </main>
 
     <script type="module" src="./src/main.ts"></script>

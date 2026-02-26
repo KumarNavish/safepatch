@@ -3,166 +3,181 @@ import katex from 'katex'
 const sliderMax = 100
 const copyResetDelayMs = 1400
 
+export type SceneMode = 'geometry' | 'forces'
+export type PresetId = 'normal' | 'spike' | 'incident'
+
 export interface ControlValues {
+  presetId: PresetId
   pressure: number
-  urgency: number
-  strictness: number
+  tightness: number
+  mode: SceneMode
 }
 
-export interface ProofFrameUi {
+export interface ForceBarUi {
+  id: string
+  label: string
+  lambda: number
+  color: string
+  isVisible: boolean
+}
+
+export interface OutcomeFrameUi {
   decisionTone: 'ship' | 'hold'
   decisionTitle: string
   decisionDetail: string
-  readinessScoreText: string
-  readinessNote: string
-  checksPassedText: string
-  queuePeakText: string
-  retainedValueText: string
-  stageCaptionText: string
-  recommendedControlsText: string
+  checksText: string
+  queueText: string
+  retainedText: string
+  readinessText: string
+  stageCaption: string
+}
+
+export interface DetailFrameUi {
+  presetNote: string
   whyItems: string[]
-  gateItems: string[]
   actionItems: string[]
   memoText: string
 }
 
 export class UIController {
-  private readonly scenarioButtons: HTMLButtonElement[]
-  private readonly scenarioNote: HTMLElement | null
-  private readonly urgencyNote: HTMLElement | null
-  private readonly strictnessNote: HTMLElement | null
+  private readonly presetButtons: HTMLButtonElement[]
+  private readonly modeButtons: HTMLButtonElement[]
 
-  private readonly urgencySlider: HTMLInputElement
-  private readonly strictnessSlider: HTMLInputElement
-  private readonly urgencyValue: HTMLElement
-  private readonly strictnessValue: HTMLElement
-
-  private readonly runButton: HTMLButtonElement
-  private readonly autoTuneButton: HTMLButtonElement
-  private readonly resetButton: HTMLButtonElement
+  private readonly presetNote: HTMLElement
+  private readonly tightnessSlider: HTMLInputElement
+  private readonly tightnessValue: HTMLElement
   private readonly replayButton: HTMLButtonElement
-  private readonly copyMemoButton: HTMLButtonElement
+  private readonly forceBars: HTMLElement
+  private readonly dragHint: HTMLElement
 
   private readonly decisionPanel: HTMLElement
   private readonly decisionPill: HTMLElement
   private readonly decisionTitle: HTMLElement
   private readonly decisionDetail: HTMLElement
-  private readonly readinessScore: HTMLElement
-  private readonly readinessNote: HTMLElement
-
   private readonly checksPassed: HTMLElement
   private readonly queuePeak: HTMLElement
   private readonly retainedValue: HTMLElement
+  private readonly readinessNote: HTMLElement
   private readonly stageCaption: HTMLElement
 
-  private readonly recommendedControls: HTMLElement
   private readonly whyList: HTMLUListElement
-  private readonly gateList: HTMLUListElement
   private readonly actionList: HTMLUListElement
   private readonly memoText: HTMLElement
+  private readonly copyMemoButton: HTMLButtonElement
+  private readonly exportButton: HTMLButtonElement
 
-  private selectedPressure = 0.56
-  private selectedUrgency = 0.58
-  private selectedStrictness = 0.62
-  private lastDecisionTone: 'ship' | 'hold' | null = null
+  private selectedPresetId: PresetId
+  private selectedPressure: number
+  private selectedTightness: number
+  private selectedMode: SceneMode
 
   constructor() {
-    this.scenarioButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.scenario-btn'))
-    if (this.scenarioButtons.length === 0) {
-      throw new Error('Missing .scenario-btn controls')
+    this.presetButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.preset-btn'))
+    this.modeButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.mode-btn'))
+
+    if (this.presetButtons.length === 0) {
+      throw new Error('Missing preset buttons')
+    }
+    if (this.modeButtons.length === 0) {
+      throw new Error('Missing mode buttons')
     }
 
-    this.scenarioNote = document.getElementById('scenario-note')
-    this.urgencyNote = document.getElementById('urgency-note')
-    this.strictnessNote = document.getElementById('strictness-note')
-
-    this.urgencySlider = this.getElement<HTMLInputElement>('urgency-slider')
-    this.strictnessSlider = this.getElement<HTMLInputElement>('strictness-slider')
-    this.urgencyValue = this.getElement('urgency-value')
-    this.strictnessValue = this.getElement('strictness-value')
-
-    this.runButton = this.getElement<HTMLButtonElement>('run-button')
-    this.autoTuneButton = this.getElement<HTMLButtonElement>('autotune-button')
-    this.resetButton = this.getElement<HTMLButtonElement>('reset-button')
+    this.presetNote = this.getElement('preset-note')
+    this.tightnessSlider = this.getElement<HTMLInputElement>('tightness-slider')
+    this.tightnessValue = this.getElement('tightness-value')
     this.replayButton = this.getElement<HTMLButtonElement>('replay-button')
-    this.copyMemoButton = this.getElement<HTMLButtonElement>('copy-memo-button')
+    this.forceBars = this.getElement('force-bars')
+    this.dragHint = this.getElement('drag-hint')
 
     this.decisionPanel = this.getElement('decision-panel')
     this.decisionPill = this.getElement('decision-pill')
     this.decisionTitle = this.getElement('decision-title')
     this.decisionDetail = this.getElement('decision-detail')
-    this.readinessScore = this.getElement('readiness-score')
-    this.readinessNote = this.getElement('readiness-note')
-
     this.checksPassed = this.getElement('checks-passed')
     this.queuePeak = this.getElement('queue-peak')
     this.retainedValue = this.getElement('retained-value')
+    this.readinessNote = this.getElement('readiness-note')
     this.stageCaption = this.getElement('stage-caption')
 
-    this.recommendedControls = this.getElement('recommended-controls')
     this.whyList = this.getElement<HTMLUListElement>('why-list')
-    this.gateList = this.getElement<HTMLUListElement>('gate-list')
     this.actionList = this.getElement<HTMLUListElement>('action-list')
     this.memoText = this.getElement('memo-text')
+    this.copyMemoButton = this.getElement<HTMLButtonElement>('copy-memo-button')
+    this.exportButton = this.getElement<HTMLButtonElement>('export-button')
 
-    const activeButton =
-      this.scenarioButtons.find((button) => button.classList.contains('active')) ?? this.scenarioButtons[0]
+    const activePreset = this.presetButtons.find((button) => button.classList.contains('active')) ?? this.presetButtons[0]
+    this.selectedPresetId = this.parsePresetId(activePreset.dataset.preset)
+    this.selectedPressure = this.parsePressure(activePreset.dataset.pressure, 0.56)
 
-    this.selectedPressure = Number.parseFloat(activeButton.dataset.pressure ?? '0.56')
-    this.selectedUrgency = this.parseSliderValue(this.urgencySlider.value, 0.58)
-    this.selectedStrictness = this.parseSliderValue(this.strictnessSlider.value, 0.62)
+    const activeMode = this.modeButtons.find((button) => button.classList.contains('active')) ?? this.modeButtons[0]
+    this.selectedMode = this.parseMode(activeMode.dataset.mode)
 
-    this.renderMathBlocks()
-    this.syncScenarioButtonState()
-    this.syncSliderValues()
-    this.setRunPending(false)
+    this.selectedTightness = this.clamp01(this.parseSliderValue(this.tightnessSlider.value, 0.62))
+
+    this.syncPresetButtons()
+    this.syncTightness()
+    this.syncModeButtons()
+    this.renderMath()
   }
 
-  onControlsChange(callback: () => void): void {
-    for (const button of this.scenarioButtons) {
+  onPresetChange(callback: (controls: ControlValues) => void): void {
+    for (const button of this.presetButtons) {
       button.addEventListener('click', () => {
-        const pressure = Number.parseFloat(button.dataset.pressure ?? '0.56')
-        if (!Number.isFinite(pressure)) {
+        this.selectedPresetId = this.parsePresetId(button.dataset.preset)
+        this.selectedPressure = this.parsePressure(button.dataset.pressure, this.selectedPressure)
+        this.syncPresetButtons()
+        callback(this.readControlValues())
+      })
+    }
+  }
+
+  onTightnessChange(callback: (controls: ControlValues) => void): void {
+    this.tightnessSlider.addEventListener('input', () => {
+      this.selectedTightness = this.clamp01(this.parseSliderValue(this.tightnessSlider.value, this.selectedTightness))
+      this.syncTightness()
+      callback(this.readControlValues())
+    })
+  }
+
+  onModeChange(callback: (mode: SceneMode) => void): void {
+    for (const button of this.modeButtons) {
+      button.addEventListener('click', () => {
+        const mode = this.parseMode(button.dataset.mode)
+        if (mode === this.selectedMode) {
           return
         }
 
-        this.selectedPressure = pressure
-        this.syncScenarioButtonState()
-        callback()
+        this.selectedMode = mode
+        this.syncModeButtons()
+        callback(mode)
       })
     }
-
-    const onSliderInput = () => {
-      this.selectedUrgency = this.parseSliderValue(this.urgencySlider.value, this.selectedUrgency)
-      this.selectedStrictness = this.parseSliderValue(this.strictnessSlider.value, this.selectedStrictness)
-      this.syncSliderValues()
-      callback()
-    }
-
-    this.urgencySlider.addEventListener('input', onSliderInput)
-    this.strictnessSlider.addEventListener('input', onSliderInput)
-  }
-
-  onRunCheck(callback: () => void): void {
-    this.runButton.addEventListener('click', callback)
-  }
-
-  onAutoTune(callback: () => void): void {
-    this.autoTuneButton.addEventListener('click', callback)
-  }
-
-  onReset(callback: () => void): void {
-    this.resetButton.addEventListener('click', callback)
   }
 
   onReplay(callback: () => void): void {
     this.replayButton.addEventListener('click', callback)
   }
 
+  onForceToggle(callback: (constraintId: string) => void): void {
+    this.forceBars.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement | null
+      const button = target?.closest<HTMLButtonElement>('.force-bar')
+      if (!button) {
+        return
+      }
+
+      const constraintId = button.dataset.constraintId
+      if (!constraintId) {
+        return
+      }
+
+      callback(constraintId)
+    })
+  }
+
   onCopyMemo(callback: (memoText: string) => Promise<boolean> | boolean): void {
     this.copyMemoButton.addEventListener('click', async () => {
-      const memo = this.memoText.textContent ?? ''
-      const copied = await callback(memo)
+      const copied = await callback(this.memoText.textContent ?? '')
       this.copyMemoButton.textContent = copied ? 'Copied' : 'Copy failed'
       window.setTimeout(() => {
         this.copyMemoButton.textContent = 'Copy memo'
@@ -171,43 +186,35 @@ export class UIController {
   }
 
   onExport(callback: () => void): void {
-    const exportButton = this.getElement<HTMLButtonElement>('export-button')
-    exportButton.addEventListener('click', callback)
+    this.exportButton.addEventListener('click', callback)
   }
 
   readControlValues(): ControlValues {
     return {
+      presetId: this.selectedPresetId,
       pressure: this.selectedPressure,
-      urgency: this.selectedUrgency,
-      strictness: this.selectedStrictness,
+      tightness: this.selectedTightness,
+      mode: this.selectedMode,
     }
   }
 
-  setControlValues(values: Partial<ControlValues>): void {
-    if (typeof values.pressure === 'number' && Number.isFinite(values.pressure)) {
-      this.selectedPressure = values.pressure
-      this.syncScenarioButtonState()
-    }
-
-    if (typeof values.urgency === 'number' && Number.isFinite(values.urgency)) {
-      this.selectedUrgency = values.urgency
-    }
-
-    if (typeof values.strictness === 'number' && Number.isFinite(values.strictness)) {
-      this.selectedStrictness = values.strictness
-    }
-
-    this.syncSliderValues()
+  setMode(mode: SceneMode): void {
+    this.selectedMode = mode
+    this.syncModeButtons()
   }
 
-  setRunPending(pending: boolean): void {
-    this.runButton.classList.toggle('pending', pending)
-    this.runButton.textContent = pending ? 'Simulate patch (pending changes)' : 'Simulate patch'
+  setPresetNote(note: string): void {
+    this.presetNote.textContent = note
   }
 
-  renderFrame(frame: ProofFrameUi): void {
-    const toneChanged = this.lastDecisionTone !== frame.decisionTone
+  setDragActive(active: boolean): void {
+    this.dragHint.classList.toggle('active', active)
+    this.dragHint.textContent = active
+      ? 'Dragging Δ0: watch Δ* and active checks respond.'
+      : 'Drag directly on the canvas or grab the Δ0 tip.'
+  }
 
+  renderOutcome(frame: OutcomeFrameUi): void {
     this.decisionPanel.classList.toggle('ship', frame.decisionTone === 'ship')
     this.decisionPanel.classList.toggle('hold', frame.decisionTone === 'hold')
 
@@ -217,48 +224,78 @@ export class UIController {
 
     this.decisionTitle.textContent = frame.decisionTitle
     this.decisionDetail.textContent = frame.decisionDetail
-    this.readinessScore.textContent = frame.readinessScoreText
-    this.readinessNote.textContent = frame.readinessNote
+    this.checksPassed.textContent = frame.checksText
+    this.queuePeak.textContent = frame.queueText
+    this.retainedValue.textContent = frame.retainedText
+    this.readinessNote.textContent = frame.readinessText
+    this.stageCaption.textContent = frame.stageCaption
+  }
 
-    this.checksPassed.textContent = frame.checksPassedText
-    this.queuePeak.textContent = frame.queuePeakText
-    this.retainedValue.textContent = frame.retainedValueText
-    this.stageCaption.textContent = frame.stageCaptionText
-    this.recommendedControls.textContent = frame.recommendedControlsText
+  renderDetails(frame: DetailFrameUi): void {
+    this.presetNote.textContent = frame.presetNote
     this.memoText.textContent = frame.memoText
+    this.renderList(this.whyList, frame.whyItems, 'No rationale yet.')
+    this.renderList(this.actionList, frame.actionItems, 'No action generated yet.')
+  }
 
-    this.renderList(this.whyList, frame.whyItems, 'Rationale unavailable.')
-    this.renderList(this.gateList, frame.gateItems, 'Rollout gates unavailable.')
-    this.renderList(this.actionList, frame.actionItems, 'No actions generated.')
-
-    if (toneChanged) {
-      this.flash(this.decisionPanel)
+  renderForceBars(items: ForceBarUi[]): void {
+    if (items.length === 0) {
+      const empty = document.createElement('p')
+      empty.className = 'drag-hint'
+      empty.textContent = 'No active correction forces for this patch.'
+      this.forceBars.replaceChildren(empty)
+      return
     }
-    this.lastDecisionTone = frame.decisionTone
+
+    const nodes = items.map((item) => {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = `force-bar${item.isVisible ? '' : ' hidden'}`
+      button.dataset.constraintId = item.id
+      button.style.boxShadow = `inset 3px 0 0 ${item.color}`
+
+      const labelWrap = document.createElement('span')
+      labelWrap.className = 'force-label'
+
+      const name = document.createElement('span')
+      name.className = 'force-name'
+      name.textContent = item.label
+
+      const meta = document.createElement('span')
+      meta.className = 'force-meta'
+      meta.textContent = item.isVisible ? 'Visible in stage' : 'Hidden in stage'
+
+      labelWrap.append(name, meta)
+
+      const value = document.createElement('span')
+      value.className = 'force-value'
+      value.textContent = `λ ${item.lambda.toFixed(3)}`
+
+      button.append(labelWrap, value)
+      return button
+    })
+
+    this.forceBars.replaceChildren(...nodes)
+  }
+
+  toggleForcePanel(show: boolean): void {
+    this.forceBars.classList.toggle('hidden', !show)
   }
 
   private renderList(target: HTMLUListElement, items: string[], fallback: string): void {
-    const lines = items.length > 0 ? items.slice(0, 4) : [fallback]
-    const nodes = lines.map((item) => {
-      const line = document.createElement('li')
-      line.textContent = item
-      return line
+    const rows = items.length > 0 ? items.slice(0, 4) : [fallback]
+    const nodes = rows.map((row) => {
+      const li = document.createElement('li')
+      li.textContent = row
+      return li
     })
     target.replaceChildren(...nodes)
   }
 
-  private renderMathBlocks(): void {
-    const equationRaw = this.getElement('equation-raw')
-    const equationQp = this.getElement('equation-qp')
-
-    equationRaw.innerHTML = katex.renderToString(String.raw`\Delta_0 = -\eta\,g_{\text{new}}`, {
-      displayMode: true,
-      throwOnError: false,
-      output: 'html',
-    })
-
-    equationQp.innerHTML = katex.renderToString(
-      String.raw`\Delta^\star = \operatorname{proj}_{\mathcal{C}}(\Delta_0),\quad \mathcal{C}=\{\Delta\mid n_k^\top\Delta\le\varepsilon_k\}`,
+  private renderMath(): void {
+    const equationNode = this.getElement('equation-main')
+    equationNode.innerHTML = katex.renderToString(
+      String.raw`\Delta^\star = \Delta_0 + \sum_{k\in\mathcal{A}}\left(-\eta\,\lambda_k\,n_k\right),\quad n_k^\top\Delta^\star\le\varepsilon_k`,
       {
         displayMode: true,
         throwOnError: false,
@@ -267,49 +304,47 @@ export class UIController {
     )
   }
 
-  private syncScenarioButtonState(): void {
-    let closestIndex = 0
-    let closestDistance = Number.POSITIVE_INFINITY
-
-    for (let index = 0; index < this.scenarioButtons.length; index += 1) {
-      const pressure = Number.parseFloat(this.scenarioButtons[index].dataset.pressure ?? '0')
-      const distance = Math.abs(pressure - this.selectedPressure)
-      if (distance < closestDistance) {
-        closestDistance = distance
-        closestIndex = index
-      }
-    }
-
-    this.scenarioButtons.forEach((button, index) => {
-      const active = index === closestIndex
-      button.classList.toggle('active', active)
-      button.setAttribute('aria-pressed', active ? 'true' : 'false')
+  private syncPresetButtons(): void {
+    this.presetButtons.forEach((button) => {
+      const isActive = this.parsePresetId(button.dataset.preset) === this.selectedPresetId
+      button.classList.toggle('active', isActive)
+      button.setAttribute('aria-pressed', isActive ? 'true' : 'false')
     })
-
-    this.selectedPressure = Number.parseFloat(this.scenarioButtons[closestIndex].dataset.pressure ?? '0.56')
-
-    if (this.scenarioNote) {
-      this.scenarioNote.textContent = this.describeScenario(this.selectedPressure)
-    }
   }
 
-  private syncSliderValues(): void {
-    this.selectedUrgency = this.clamp01(this.selectedUrgency)
-    this.selectedStrictness = this.clamp01(this.selectedStrictness)
+  private syncModeButtons(): void {
+    this.modeButtons.forEach((button) => {
+      const isActive = this.parseMode(button.dataset.mode) === this.selectedMode
+      button.classList.toggle('active', isActive)
+      button.setAttribute('aria-pressed', isActive ? 'true' : 'false')
+    })
 
-    this.urgencySlider.value = Math.round(this.selectedUrgency * sliderMax).toString()
-    this.strictnessSlider.value = Math.round(this.selectedStrictness * sliderMax).toString()
+    this.toggleForcePanel(this.selectedMode === 'forces')
+  }
 
-    this.urgencyValue.textContent = `${Math.round(this.selectedUrgency * 100)}%`
-    this.strictnessValue.textContent = `${Math.round(this.selectedStrictness * 100)}%`
+  private syncTightness(): void {
+    const percentValue = Math.round(this.selectedTightness * 100)
+    this.tightnessSlider.value = percentValue.toString()
+    this.tightnessValue.textContent = `${percentValue}%`
+  }
 
-    if (this.urgencyNote) {
-      this.urgencyNote.textContent = this.describeUrgency(this.selectedUrgency)
+  private parsePresetId(value: string | undefined): PresetId {
+    if (value === 'normal' || value === 'incident') {
+      return value
     }
+    return 'spike'
+  }
 
-    if (this.strictnessNote) {
-      this.strictnessNote.textContent = this.describeStrictness(this.selectedStrictness)
+  private parseMode(value: string | undefined): SceneMode {
+    if (value === 'forces') {
+      return 'forces'
     }
+    return 'geometry'
+  }
+
+  private parsePressure(value: string | undefined, fallback: number): number {
+    const parsed = Number.parseFloat(value ?? '')
+    return Number.isFinite(parsed) ? parsed : fallback
   }
 
   private parseSliderValue(raw: string, fallback: number): number {
@@ -317,47 +352,11 @@ export class UIController {
     if (!Number.isFinite(parsed)) {
       return fallback
     }
-    return this.clamp01(parsed / sliderMax)
+    return parsed / sliderMax
   }
 
   private clamp01(value: number): number {
     return Math.min(Math.max(value, 0), 1)
-  }
-
-  private describeScenario(pressure: number): string {
-    if (pressure < 0.38) {
-      return 'Normal traffic: lower queue pressure and lower immediate risk.'
-    }
-    if (pressure < 0.75) {
-      return 'Spike traffic: meaningful queue pressure, still manageable with correct projection.'
-    }
-    return 'Incident traffic: severe pressure where unsafe raw patches escalate quickly.'
-  }
-
-  private describeUrgency(urgency: number): string {
-    if (urgency < 0.34) {
-      return 'Low urgency: projection can prioritize safety conservatively.'
-    }
-    if (urgency < 0.67) {
-      return 'Balanced urgency: keep value while correcting unsafe components.'
-    }
-    return 'Critical urgency: projection must keep as much useful gain as possible.'
-  }
-
-  private describeStrictness(strictness: number): string {
-    if (strictness < 0.34) {
-      return 'Relaxed checks: easier to retain gain, lower safety margin.'
-    }
-    if (strictness < 0.67) {
-      return 'Moderate checks: typical production guardrail envelope.'
-    }
-    return 'Tight checks: conservative release posture with stricter boundaries.'
-  }
-
-  private flash(element: HTMLElement): void {
-    element.classList.remove('flash')
-    void element.offsetWidth
-    element.classList.add('flash')
   }
 
   private getElement<T extends HTMLElement>(id: string): T {

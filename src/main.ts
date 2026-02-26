@@ -1,143 +1,165 @@
 import 'katex/dist/katex.min.css'
 
-import { normalize, scale, vec } from './geometry'
+import { normalize, scale, vec, worldBoundsFromHalfspaces } from './geometry'
 import type { Halfspace, Vec2 } from './geometry'
 import { computeProjectedStep } from './qp'
+import type { ProjectionResult } from './qp'
 import { SceneRenderer } from './render'
 import { UIController } from './ui'
-import type { ProofFrameUi } from './ui'
+import type { DetailFrameUi, ForceBarUi, OutcomeFrameUi, PresetId, SceneMode } from './ui'
 
-const TRANSITION_MS = 4200
+const ETA = 1
 const PROJECTION_TOLERANCE = 1e-6
-const OVERLOAD_THRESHOLD = 520
+const UPDATE_ANIMATION_MS = 300
+const TEACHING_ANIMATION_MS = 1650
+const MAX_RAW_RADIUS_FACTOR = 1.25
 
-type StrategyId = 'raw' | 'safe' | 'hold'
-type QueueMode = 'raw' | 'safe'
+const CONSTRAINT_PALETTE = ['#eb5f82', '#56a7ff', '#5fcf8b', '#f0ad63', '#8f7bea', '#53c6bc']
 
-const DEFAULT_CONTROLS: ControlSnapshot = {
-  pressure: 0.56,
-  urgency: 0.58,
-  strictness: 0.62,
+interface PresetConfig {
+  id: PresetId
+  pressure: number
+  note: string
 }
 
-const baseHalfspaces: Halfspace[] = [
+const PRESETS: Record<PresetId, PresetConfig> = {
+  normal: {
+    id: 'normal',
+    pressure: 0.24,
+    note: 'Normal traffic: lower external pressure, wider room for feasible motion.',
+  },
+  spike: {
+    id: 'spike',
+    pressure: 0.56,
+    note: 'Spike traffic: moderate pressure where projection gives visible safety gains.',
+  },
+  incident: {
+    id: 'incident',
+    pressure: 0.9,
+    note: 'Incident traffic: high pressure, unsafe raw steps can escalate quickly.',
+  },
+}
+
+const BASE_HALFSPACES: Halfspace[] = [
   {
     id: 'g1',
     label: 'toxicity budget',
     normal: normalize(vec(0.94, 0.34)),
-    bound: 0.44,
+    bound: 0.72,
     active: true,
   },
   {
     id: 'g2',
     label: 'hallucination budget',
-    normal: normalize(vec(0.24, 1)),
-    bound: 0.39,
+    normal: normalize(vec(0.26, 1)),
+    bound: 0.66,
     active: true,
   },
   {
     id: 'g3',
     label: 'privacy guardrail',
-    normal: normalize(vec(-0.92, 0.38)),
-    bound: 0.54,
+    normal: normalize(vec(-0.89, 0.46)),
+    bound: 0.73,
     active: true,
   },
   {
     id: 'g4',
     label: 'style drift guardrail',
-    normal: normalize(vec(0.76, -0.65)),
-    bound: 0.42,
+    normal: normalize(vec(0.73, -0.68)),
+    bound: 0.64,
     active: true,
   },
 ]
 
-const BASE_BOUNDS = new Map<string, number>(baseHalfspaces.map((halfspace) => [halfspace.id, halfspace.bound]))
+const BASE_BOUNDS = new Map<string, number>(BASE_HALFSPACES.map((halfspace) => [halfspace.id, halfspace.bound]))
 
-const STRICTNESS_SENSITIVITY: Record<string, number> = {
-  g1: 0.9,
-  g2: 1.1,
-  g3: 0.75,
-  g4: 1.4,
+const TIGHTNESS_SENSITIVITY: Record<string, number> = {
+  g1: 0.86,
+  g2: 1.08,
+  g3: 0.74,
+  g4: 1.2,
 }
 
-interface QueueOutcome {
-  series: number[]
-  peak: number
-  breachMinutes: number
-  escalations: number
+const PRESSURE_PENALTY: Record<string, number> = {
+  g1: 0.11,
+  g2: 0.16,
+  g3: 0.1,
+  g4: 0.13,
 }
 
-interface ControlSnapshot {
+interface InteractiveState {
+  presetId: PresetId
   pressure: number
-  urgency: number
-  strictness: number
+  tightness: number
+  mode: SceneMode
+  rawStep: Vec2
 }
 
-interface ScenarioSignals {
-  eta: number
-  gradient: Vec2
-  strictnessScale: number
-}
-
-interface DeploymentDecision {
-  ship: boolean
-  reason: string
-}
-
-interface ScenarioEvaluation {
-  controls: ControlSnapshot
-  scenarioLabel: string
+interface Evaluation {
+  state: InteractiveState
   halfspaces: Halfspace[]
-  scenarioSignals: ScenarioSignals
-  projectedStep: ReturnType<typeof computeProjectedStep>
-  rawQueue: QueueOutcome
-  safeQueue: QueueOutcome
-  deployment: DeploymentDecision
-  violatedRaw: number
-  violatedSafe: number
-  retainedValueRatio: number
-  rawRiskRatio: number
-  safeRiskRatio: number
-  safeReadiness: number
-}
-
-interface StrategyAssessment {
-  id: StrategyId
-  label: string
-  guardrailViolations: number
-  queue: QueueOutcome
-  retainedGainPct: number
-  shippable: boolean
-  status: string
-  reason: string
-  score: number
-}
-
-interface StrategyPack {
-  strategies: StrategyAssessment[]
-  recommendedId: StrategyId
-  caption: string
-  whyItems: string[]
-  gateItems: string[]
+  projection: ProjectionResult
+  rawViolationCount: number
+  safeViolationCount: number
+  activeCheckCount: number
+  checksRawPassed: number
+  checksSafePassed: number
+  rawRisk: number
+  safeRisk: number
+  queueRawPeak: number
+  queueSafePeak: number
+  retainedGain: number
   decisionTone: 'ship' | 'hold'
   decisionTitle: string
   decisionDetail: string
-  readinessScore: number
-  readinessNote: string
-}
-
-interface GuidanceBundle {
-  recommendedControlsText: string
+  readiness: number
+  whyItems: string[]
   actionItems: string[]
   memoText: string
 }
 
-function clamp01(value: number): number {
-  return Math.min(Math.max(value, 0), 1)
+const DEFAULT_STATE: InteractiveState = {
+  presetId: 'spike',
+  pressure: PRESETS.spike.pressure,
+  tightness: 0.62,
+  mode: 'geometry',
+  rawStep: vec(1.05, 0.62),
+}
+
+function clamp(value: number, min = 0, max = 1): number {
+  return Math.min(Math.max(value, min), max)
 }
 
 function clampRange(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
+}
+
+function easeOutCubic(value: number): number {
+  const t = clamp(value)
+  return 1 - (1 - t) ** 3
+}
+
+function cloneState(state: InteractiveState): InteractiveState {
+  return {
+    presetId: state.presetId,
+    pressure: state.pressure,
+    tightness: state.tightness,
+    mode: state.mode,
+    rawStep: { ...state.rawStep },
+  }
+}
+
+function lerpState(from: InteractiveState, to: InteractiveState, progress: number): InteractiveState {
+  return {
+    presetId: to.presetId,
+    pressure: from.pressure + (to.pressure - from.pressure) * progress,
+    tightness: from.tightness + (to.tightness - from.tightness) * progress,
+    mode: to.mode,
+    rawStep: {
+      x: from.rawStep.x + (to.rawStep.x - from.rawStep.x) * progress,
+      y: from.rawStep.y + (to.rawStep.y - from.rawStep.y) * progress,
+    },
+  }
 }
 
 function copyHalfspaces(halfspaces: Halfspace[]): Halfspace[] {
@@ -147,78 +169,247 @@ function copyHalfspaces(halfspaces: Halfspace[]): Halfspace[] {
   }))
 }
 
-function degreesToRadians(value: number): number {
-  return (value * Math.PI) / 180
+function buildHalfspaces(pressure: number, tightness: number): Halfspace[] {
+  const strictness = clamp01(tightness)
+  const pressureClamped = clamp01(pressure)
+  const strictnessScale = 1.24 - strictness * 0.9
+
+  return BASE_HALFSPACES.map((halfspace) => {
+    const baseBound = BASE_BOUNDS.get(halfspace.id) ?? halfspace.bound
+    const sensitivity = TIGHTNESS_SENSITIVITY[halfspace.id] ?? 0.8
+    const pressurePenalty = PRESSURE_PENALTY[halfspace.id] ?? 0.1
+
+    const strictnessShift = 1 + sensitivity * (strictnessScale - 1)
+    const adjusted = baseBound * strictnessShift - pressureClamped * pressurePenalty
+
+    return {
+      ...halfspace,
+      normal: { ...halfspace.normal },
+      bound: Math.max(0.16, adjusted),
+      active: true,
+    }
+  })
 }
 
-function percent(value: number): string {
-  return `${Math.round(clamp01(value) * 100)}%`
+function clamp01(value: number): number {
+  return clamp(value, 0, 1)
 }
 
-function scenarioFromControls(controls: ControlSnapshot): ScenarioSignals {
-  const pressure = clamp01(controls.pressure)
-  const urgency = clamp01(controls.urgency)
-  const strictness = clamp01(controls.strictness)
-
-  const eta = 0.45 + 2.35 * urgency + 0.78 * pressure
-  const strictnessScale = 1.42 - 1.08 * strictness
-  const angle = degreesToRadians(206 + pressure * 122 + urgency * 30 - strictness * 20)
-  const magnitude = 0.84 + pressure * 1.65 + urgency * 1.12
-  const gradient = scale(normalize(vec(Math.cos(angle), Math.sin(angle))), magnitude)
-
-  return { eta, strictnessScale, gradient }
-}
-
-function boundScaleForStrictness(id: string, strictnessScale: number): number {
-  const sensitivity = STRICTNESS_SENSITIVITY[id] ?? 0.7
-  return clampRange(1 + sensitivity * (strictnessScale - 1), 0.24, 1.95)
-}
-
-function scenarioName(pressure: number): string {
-  if (pressure < 0.38) {
-    return 'normal traffic'
-  }
-  if (pressure < 0.75) {
-    return 'spike traffic'
-  }
-  return 'incident traffic'
-}
-
-function simulateQueueOutcome(
-  controls: ControlSnapshot,
-  riskRatio: number,
-  retainedValueRatio: number,
-  mode: QueueMode,
-): QueueOutcome {
-  const minutes = 18
-  const pressure = clamp01(controls.pressure)
-  const urgency = clamp01(controls.urgency)
-  const initialQueue = Math.round(185 + pressure * 132 + urgency * 42)
-  const series: number[] = [initialQueue]
-
-  for (let minute = 1; minute < minutes; minute += 1) {
-    const pulse = 34 * Math.exp(-((minute - 8) ** 2) / 9)
-    const arrivals = 318 + pressure * 176 + urgency * 58 + pulse
-
-    const capacity =
-      mode === 'raw'
-        ? 392 + retainedValueRatio * 86 - riskRatio * 238 - pressure * 21
-        : 392 + retainedValueRatio * 73 - riskRatio * 88 - pressure * 14
-
-    const previous = series[minute - 1]
-    series.push(Math.max(mode === 'raw' ? 66 : 58, previous + arrivals - capacity))
+function scenarioEvaluation(state: InteractiveState): Evaluation {
+  const normalizedState: InteractiveState = {
+    ...state,
+    pressure: clamp01(state.pressure),
+    tightness: clamp01(state.tightness),
+    rawStep: { ...state.rawStep },
   }
 
-  const peak = Math.round(Math.max(...series))
-  const breachMinutes = series.filter((value) => value > OVERLOAD_THRESHOLD).length
-  const overflow = series.reduce((sum, value) => sum + Math.max(0, value - OVERLOAD_THRESHOLD), 0)
+  const halfspaces = buildHalfspaces(normalizedState.pressure, normalizedState.tightness)
+  const gradient = scale(normalizedState.rawStep, -1 / ETA)
+
+  const projection = computeProjectedStep({
+    gradient,
+    eta: ETA,
+    halfspaces,
+    tolerance: PROJECTION_TOLERANCE,
+  })
+
+  const activeCheckCount = halfspaces.filter((halfspace) => halfspace.active).length
+
+  const rawViolationCount = projection.diagnostics.filter(
+    (diagnostic) => diagnostic.active && diagnostic.violationStep0 > PROJECTION_TOLERANCE,
+  ).length
+
+  const safeViolationCount = projection.diagnostics.filter(
+    (diagnostic) => diagnostic.active && diagnostic.violationProjected > PROJECTION_TOLERANCE,
+  ).length
+
+  const checksRawPassed = Math.max(0, activeCheckCount - rawViolationCount)
+  const checksSafePassed = Math.max(0, activeCheckCount - safeViolationCount)
+
+  const maxBound = Math.max(0.12, ...halfspaces.map((halfspace) => Math.abs(halfspace.bound)))
+  const rawRisk = clampRange(Math.max(0, projection.maxViolationStep0) / maxBound, 0, 2)
+  const safeRisk = clampRange(Math.max(0, projection.maxViolationProjected) / maxBound, 0, 2)
+  const retainedGain = clampRange(projection.descentRetainedRatio, 0, 1.2)
+
+  const baseQueue = 190 + normalizedState.pressure * 320 + normalizedState.tightness * 38
+  const queueRawPeak = Math.round(clampRange(baseQueue + rawRisk * 330 + (1 - retainedGain) * 35, 80, 3800))
+  const queueSafePeak = Math.round(clampRange(baseQueue + safeRisk * 190 + (1 - retainedGain) * 60 - 46, 60, 3800))
+
+  let decisionTone: 'ship' | 'hold' = 'ship'
+  let decisionTitle = 'Ship projected patch'
+  let decisionDetail = 'Projected step is feasible and keeps practical value.'
+
+  if (!projection.ship) {
+    decisionTone = 'hold'
+    decisionTitle = 'Hold deployment'
+    decisionDetail = projection.reason ?? 'No feasible projected patch under current constraints.'
+  } else if (safeViolationCount > 0) {
+    decisionTone = 'hold'
+    decisionTitle = 'Hold deployment'
+    decisionDetail = `Projected patch still violates ${safeViolationCount} check${safeViolationCount > 1 ? 's' : ''}.`
+  } else if (retainedGain < 0.34) {
+    decisionTone = 'hold'
+    decisionTitle = 'Hold deployment'
+    decisionDetail = `Safe projection keeps only ${Math.round(retainedGain * 100)}% of intended gain.`
+  } else if (queueSafePeak > queueRawPeak + 20) {
+    decisionTone = 'hold'
+    decisionTitle = 'Hold deployment'
+    decisionDetail = 'Projection is safe but queue pressure is not improving enough.'
+  }
+
+  const queueImprovementRatio = clampRange((queueRawPeak - queueSafePeak) / Math.max(queueRawPeak, 1), -0.4, 1)
+  const queueScore = clamp01((queueImprovementRatio + 0.4) / 1.4)
+  const riskScore = clamp01(1 - safeRisk)
+  const retentionScore = clamp01(retainedGain)
+
+  let readiness = 100 * (0.42 * riskScore + 0.33 * retentionScore + 0.25 * queueScore)
+  if (decisionTone === 'hold') {
+    readiness *= 0.74
+  }
+  readiness = Math.round(clampRange(readiness, 0, 100))
+
+  const activeLabels = projection.activeSetIds
+    .map((id) => halfspaces.find((halfspace) => halfspace.id === id)?.label)
+    .filter((value): value is string => typeof value === 'string')
+
+  const whyItems: string[] = [
+    `Raw checks passed: ${checksRawPassed}/${activeCheckCount}; projected checks passed: ${checksSafePassed}/${activeCheckCount}.`,
+    activeLabels.length > 0
+      ? `Active correction set: ${activeLabels.join(', ')}.`
+      : 'No active correction force: raw patch is already inside all active checks.',
+    `Expected queue peak: ${queueRawPeak.toLocaleString()} -> ${queueSafePeak.toLocaleString()}; retained gain ${Math.round(
+      retainedGain * 100,
+    )}%.`,
+  ]
+
+  const actionItems: string[] =
+    decisionTone === 'ship'
+      ? [
+          'Ship projected patch through staged canary rollout.',
+          'Monitor active checks and queue for the first 15 minutes.',
+          'Keep rollback hook armed if queue rises above threshold.',
+        ]
+      : [
+          'Do not ship yet in this operating point.',
+          'Drag Δ0 toward the feasible region or reduce policy tightness.',
+          'Replay the teaching sequence to inspect the dominant correction force.',
+        ]
+
+  const memoText = [
+    `SafePatch decision: ${decisionTone.toUpperCase()}.`,
+    `Preset: ${normalizedState.presetId}. Tightness: ${Math.round(normalizedState.tightness * 100)}%.`,
+    `Checks: ${checksRawPassed}/${activeCheckCount} -> ${checksSafePassed}/${activeCheckCount}.`,
+      `Queue peak: ${queueRawPeak} -> ${queueSafePeak}.`,
+    `Retained gain: ${Math.round(retainedGain * 100)}%.`,
+    `Decision detail: ${decisionDetail}`,
+  ].join(' ')
 
   return {
-    series,
-    peak,
-    breachMinutes,
-    escalations: Math.round(breachMinutes * 16 + overflow / 34),
+    state: normalizedState,
+    halfspaces,
+    projection,
+    rawViolationCount,
+    safeViolationCount,
+    activeCheckCount,
+    checksRawPassed,
+    checksSafePassed,
+    rawRisk,
+    safeRisk,
+    queueRawPeak,
+    queueSafePeak,
+    retainedGain,
+    decisionTone,
+    decisionTitle,
+    decisionDetail,
+    readiness,
+    whyItems,
+    actionItems,
+    memoText,
   }
+}
+
+function forceColor(constraintId: string): string {
+  const index = BASE_HALFSPACES.findIndex((halfspace) => halfspace.id === constraintId)
+  if (index < 0) {
+    return CONSTRAINT_PALETTE[0]
+  }
+  return CONSTRAINT_PALETTE[index % CONSTRAINT_PALETTE.length]
+}
+
+function buildForceBars(evaluation: Evaluation, visibleIds: Set<string>): ForceBarUi[] {
+  return evaluation.projection.diagnostics
+    .filter((diagnostic) => diagnostic.active && diagnostic.lambda > PROJECTION_TOLERANCE)
+    .sort((a, b) => b.lambda - a.lambda)
+    .map((diagnostic) => ({
+      id: diagnostic.id,
+      label: diagnostic.label,
+      lambda: diagnostic.lambda,
+      color: forceColor(diagnostic.id),
+      isVisible: visibleIds.has(diagnostic.id),
+    }))
+}
+
+function buildOutcomeFrame(
+  evaluation: Evaluation,
+  mode: SceneMode,
+  teachingProgress: number,
+  dragging: boolean,
+): OutcomeFrameUi {
+  const dominantActiveId = evaluation.projection.activeSetIds
+    .slice()
+    .sort((a, b) => (evaluation.projection.lambdaById[b] ?? 0) - (evaluation.projection.lambdaById[a] ?? 0))[0]
+
+  const dominantLabel = dominantActiveId
+    ? evaluation.halfspaces.find((halfspace) => halfspace.id === dominantActiveId)?.label ?? dominantActiveId
+    : null
+
+  const dominantLambda = dominantActiveId ? evaluation.projection.lambdaById[dominantActiveId] ?? 0 : 0
+
+  let stageCaption: string
+  if (mode === 'forces') {
+    stageCaption = 'Forces view: Δ* = Δ0 + Σ(−η λ n). Click λ bars to isolate each correction term.'
+  } else if (teachingProgress < 1) {
+    stageCaption = 'Teaching sequence: Δ0 crosses a check, push-back appears, then Δ* lands on the feasible side.'
+  } else if (dragging) {
+    stageCaption = 'Dragging Δ0: projection updates continuously as you move the raw patch.'
+  } else if (dominantLabel && dominantLambda > PROJECTION_TOLERANCE) {
+    stageCaption = `Dominant correction: ${dominantLabel} (λ=${dominantLambda.toFixed(3)}).`
+  } else {
+    stageCaption = 'Geometry view: Δ0 is already feasible, so Δ* matches it with no correction force.'
+  }
+
+  return {
+    decisionTone: evaluation.decisionTone,
+    decisionTitle: evaluation.decisionTitle,
+    decisionDetail: evaluation.decisionDetail,
+    checksText: `${evaluation.checksRawPassed}/${evaluation.activeCheckCount} -> ${evaluation.checksSafePassed}/${
+      evaluation.activeCheckCount
+    }`,
+    queueText: `${evaluation.queueRawPeak.toLocaleString()} -> ${evaluation.queueSafePeak.toLocaleString()}`,
+    retainedText: `${Math.round(evaluation.retainedGain * 100)}%`,
+    readinessText: `Readiness: ${evaluation.readiness}/100`,
+    stageCaption,
+  }
+}
+
+function buildDetailFrame(evaluation: Evaluation): DetailFrameUi {
+  const presetNote = PRESETS[evaluation.state.presetId].note
+  return {
+    presetNote,
+    whyItems: evaluation.whyItems,
+    actionItems: evaluation.actionItems,
+    memoText: evaluation.memoText,
+  }
+}
+
+function clampRawStep(step: Vec2, halfspaces: Halfspace[]): Vec2 {
+  const radius = worldBoundsFromHalfspaces(halfspaces) * MAX_RAW_RADIUS_FACTOR
+  const mag = Math.hypot(step.x, step.y)
+  if (mag <= radius || mag < PROJECTION_TOLERANCE) {
+    return step
+  }
+  const ratio = radius / mag
+  return scale(step, ratio)
 }
 
 function exportDecision(payload: Record<string, unknown>): void {
@@ -226,469 +417,13 @@ function exportDecision(payload: Record<string, unknown>): void {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+
   link.href = url
   link.download = `safepatch-decision-${stamp}.json`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
-}
-
-function deploymentDecision(
-  projectedShipPossible: boolean,
-  projectedReason: string | null,
-  rawQueue: QueueOutcome,
-  safeQueue: QueueOutcome,
-  retainedValueRatio: number,
-): DeploymentDecision {
-  if (!projectedShipPossible) {
-    return {
-      ship: false,
-      reason: projectedReason ?? 'No safe correction exists under the current policy limits.',
-    }
-  }
-
-  if (retainedValueRatio < 0.42) {
-    return {
-      ship: false,
-      reason: `Correction keeps only ${Math.round(retainedValueRatio * 100)}% of intended gain, so value is too low.`,
-    }
-  }
-
-  if (safeQueue.breachMinutes >= rawQueue.breachMinutes && safeQueue.escalations >= rawQueue.escalations) {
-    return {
-      ship: false,
-      reason: 'Correction is safe but does not lower production risk enough.',
-    }
-  }
-
-  return {
-    ship: true,
-    reason: 'Safe correction keeps value and lowers expected incident pressure.',
-  }
-}
-
-function scoreSafeReadiness(
-  deployment: DeploymentDecision,
-  rawQueue: QueueOutcome,
-  safeQueue: QueueOutcome,
-  safeRiskRatio: number,
-  retainedValueRatio: number,
-  violatedSafe: number,
-): number {
-  const escalationDropRatio = (rawQueue.escalations - safeQueue.escalations) / Math.max(rawQueue.escalations, 1)
-  const breachDropRatio = (rawQueue.breachMinutes - safeQueue.breachMinutes) / Math.max(rawQueue.breachMinutes, 1)
-  const peakDropRatio = (rawQueue.peak - safeQueue.peak) / Math.max(rawQueue.peak, 1)
-
-  const riskClearance = clamp01(1 - safeRiskRatio * 2.2)
-  const retentionScore = clamp01(retainedValueRatio)
-
-  let score =
-    100 *
-    (0.34 * riskClearance +
-      0.24 * clampRange(escalationDropRatio, 0, 1) +
-      0.14 * clampRange(breachDropRatio, 0, 1) +
-      0.08 * clampRange(peakDropRatio, 0, 1) +
-      0.2 * retentionScore)
-
-  if (!deployment.ship) {
-    score *= 0.72
-  }
-
-  if (violatedSafe > 0) {
-    score = Math.min(score, 44)
-  }
-
-  return Math.round(clampRange(score, 0, 100))
-}
-
-function evaluateScenario(controls: ControlSnapshot): ScenarioEvaluation {
-  const normalizedControls: ControlSnapshot = {
-    pressure: clamp01(controls.pressure),
-    urgency: clamp01(controls.urgency),
-    strictness: clamp01(controls.strictness),
-  }
-
-  const scenarioSignals = scenarioFromControls(normalizedControls)
-  const halfspaces = copyHalfspaces(baseHalfspaces)
-
-  for (const halfspace of halfspaces) {
-    const baseBound = BASE_BOUNDS.get(halfspace.id)
-    if (baseBound === undefined) {
-      continue
-    }
-
-    const scaledBound = baseBound * boundScaleForStrictness(halfspace.id, scenarioSignals.strictnessScale)
-    const pressurePenalty =
-      normalizedControls.pressure * normalizedControls.strictness * (halfspace.id === 'g2' ? 0.24 : 0.2)
-
-    halfspace.bound = scaledBound - pressurePenalty
-    halfspace.active = true
-  }
-
-  const projectedStep = computeProjectedStep({
-    gradient: scenarioSignals.gradient,
-    eta: scenarioSignals.eta,
-    halfspaces,
-    tolerance: PROJECTION_TOLERANCE,
-  })
-
-  const largestBudget = Math.max(0.1, ...halfspaces.map((halfspace) => Math.abs(halfspace.bound)))
-  const rawRiskRatio = Math.max(0, projectedStep.maxViolationStep0) / largestBudget
-  const safeRiskRatio = Math.max(0, projectedStep.maxViolationProjected) / largestBudget
-  const retainedValueRatio = clampRange(projectedStep.descentRetainedRatio, 0, 1.5)
-
-  const rawQueue = simulateQueueOutcome(normalizedControls, rawRiskRatio, 1, 'raw')
-  const safeQueue = simulateQueueOutcome(normalizedControls, safeRiskRatio, retainedValueRatio, 'safe')
-
-  const deployment = deploymentDecision(projectedStep.ship, projectedStep.reason, rawQueue, safeQueue, retainedValueRatio)
-
-  const violatedRaw = projectedStep.diagnostics.filter(
-    (diagnostic) => diagnostic.active && diagnostic.violationStep0 > PROJECTION_TOLERANCE,
-  ).length
-  const violatedSafe = projectedStep.diagnostics.filter(
-    (diagnostic) => diagnostic.active && diagnostic.violationProjected > PROJECTION_TOLERANCE,
-  ).length
-
-  const safeReadiness = scoreSafeReadiness(
-    deployment,
-    rawQueue,
-    safeQueue,
-    safeRiskRatio,
-    retainedValueRatio,
-    violatedSafe,
-  )
-
-  return {
-    controls: normalizedControls,
-    scenarioLabel: scenarioName(normalizedControls.pressure),
-    halfspaces,
-    scenarioSignals,
-    projectedStep,
-    rawQueue,
-    safeQueue,
-    deployment,
-    violatedRaw,
-    violatedSafe,
-    retainedValueRatio,
-    rawRiskRatio,
-    safeRiskRatio,
-    safeReadiness,
-  }
-}
-
-function optimizationObjective(evaluation: ScenarioEvaluation): number {
-  const escalationsSaved = evaluation.rawQueue.escalations - evaluation.safeQueue.escalations
-  const breachSaved = evaluation.rawQueue.breachMinutes - evaluation.safeQueue.breachMinutes
-  const peakSaved = evaluation.rawQueue.peak - evaluation.safeQueue.peak
-
-  const shipBonus = evaluation.deployment.ship ? 16 : 0
-  const violationPenalty = evaluation.violatedSafe > 0 ? 34 : 0
-  const retentionPenalty = Math.max(0, 0.55 - evaluation.retainedValueRatio) * 45
-
-  return (
-    evaluation.safeReadiness +
-    shipBonus +
-    escalationsSaved * 0.12 +
-    breachSaved * 1.4 +
-    peakSaved * 0.03 -
-    violationPenalty -
-    retentionPenalty
-  )
-}
-
-function findBestControls(pressure: number, current: ControlSnapshot): ScenarioEvaluation {
-  let best = evaluateScenario(current)
-  let bestScore = optimizationObjective(best)
-  let bestDistance = Number.POSITIVE_INFINITY
-
-  for (let urgencyStep = 24; urgencyStep <= 96; urgencyStep += 4) {
-    for (let strictnessStep = 24; strictnessStep <= 96; strictnessStep += 4) {
-      const candidateControls: ControlSnapshot = {
-        pressure,
-        urgency: urgencyStep / 100,
-        strictness: strictnessStep / 100,
-      }
-
-      const candidate = evaluateScenario(candidateControls)
-      const candidateScore = optimizationObjective(candidate)
-      const candidateDistance =
-        Math.abs(candidate.controls.urgency - current.urgency) +
-        Math.abs(candidate.controls.strictness - current.strictness)
-
-      const better = candidateScore > bestScore + 0.0001
-      const tieBreak = Math.abs(candidateScore - bestScore) <= 0.0001 && candidateDistance < bestDistance
-
-      if (better || tieBreak) {
-        best = candidate
-        bestScore = candidateScore
-        bestDistance = candidateDistance
-      }
-    }
-  }
-
-  return best
-}
-
-function scoreStrategy(base: Omit<StrategyAssessment, 'score'>, controls: ControlSnapshot): number {
-  let score = 100
-
-  score -= base.guardrailViolations * 28
-  score -= base.queue.breachMinutes * 2.15
-  score -= base.queue.escalations * 0.09
-  score += base.retainedGainPct * 0.18
-
-  if (base.id === 'hold') {
-    score -= controls.urgency * 24
-  }
-
-  if (base.id === 'raw' && base.guardrailViolations > 0) {
-    score -= 42
-  }
-
-  if (base.id === 'safe' && !base.shippable) {
-    score -= 20
-  }
-
-  return Math.round(clampRange(score, 0, 100))
-}
-
-function getStrategy(strategies: StrategyAssessment[], id: StrategyId): StrategyAssessment {
-  const strategy = strategies.find((item) => item.id === id)
-  if (!strategy) {
-    throw new Error(`Missing strategy ${id}`)
-  }
-  return strategy
-}
-
-function selectRecommendedStrategy(strategies: StrategyAssessment[]): StrategyId {
-  const raw = getStrategy(strategies, 'raw')
-  const safe = getStrategy(strategies, 'safe')
-  const hold = getStrategy(strategies, 'hold')
-
-  let recommended = safe.shippable ? safe : hold
-
-  if (hold.score >= recommended.score + 3) {
-    recommended = hold
-  }
-
-  if (raw.shippable && raw.score >= Math.max(safe.score, hold.score) + 7) {
-    recommended = raw
-  }
-
-  return recommended.id
-}
-
-function buildStrategyPack(evaluation: ScenarioEvaluation): StrategyPack {
-  const holdQueue = simulateQueueOutcome(evaluation.controls, 0, 0, 'safe')
-
-  const baseStrategies: Array<Omit<StrategyAssessment, 'score'>> = [
-    {
-      id: 'raw',
-      label: 'Raw patch',
-      guardrailViolations: evaluation.violatedRaw,
-      queue: evaluation.rawQueue,
-      retainedGainPct: 100,
-      shippable: evaluation.violatedRaw === 0,
-      status: evaluation.violatedRaw === 0 ? 'Shippable' : 'Unsafe',
-      reason:
-        evaluation.violatedRaw === 0
-          ? 'Raw patch already stays inside policy limits.'
-          : `Raw patch violates ${evaluation.violatedRaw} guardrail(s).`,
-    },
-    {
-      id: 'safe',
-      label: 'SafePatch projection',
-      guardrailViolations: evaluation.violatedSafe,
-      queue: evaluation.safeQueue,
-      retainedGainPct: Math.round(clampRange(evaluation.retainedValueRatio, 0, 1.4) * 100),
-      shippable: evaluation.deployment.ship && evaluation.violatedSafe === 0,
-      status: evaluation.deployment.ship ? 'Preferred' : 'Needs tuning',
-      reason: evaluation.deployment.reason,
-    },
-    {
-      id: 'hold',
-      label: 'Hold deployment',
-      guardrailViolations: 0,
-      queue: holdQueue,
-      retainedGainPct: 0,
-      shippable: false,
-      status: 'No rollout',
-      reason: 'No model change reaches production users.',
-    },
-  ]
-
-  const strategies = baseStrategies.map((base) => ({
-    ...base,
-    score: scoreStrategy(base, evaluation.controls),
-  }))
-
-  const recommendedId = selectRecommendedStrategy(strategies)
-  const recommended = getStrategy(strategies, recommendedId)
-  const raw = getStrategy(strategies, 'raw')
-  const safe = getStrategy(strategies, 'safe')
-
-  const escalationDelta = raw.queue.escalations - recommended.queue.escalations
-  const breachDelta = raw.queue.breachMinutes - recommended.queue.breachMinutes
-
-  const caption = `Recommended: ${recommended.label}. Predicted escalations ${raw.queue.escalations} -> ${recommended.queue.escalations}.`
-
-  const whyItems: string[] = []
-  if (recommendedId === 'safe') {
-    whyItems.push(`Guardrail violations drop ${evaluation.violatedRaw} -> ${evaluation.violatedSafe} with SafePatch.`)
-    whyItems.push(`Expected escalations improve ${raw.queue.escalations} -> ${safe.queue.escalations} under identical traffic.`)
-    whyItems.push(`Projected patch retains ${Math.round(evaluation.retainedValueRatio * 100)}% of intended fix value.`)
-  } else if (recommendedId === 'hold') {
-    whyItems.push(`Safe deployment is not yet defensible: ${safe.reason.toLowerCase()}`)
-    whyItems.push(`Holding avoids shipping ${evaluation.violatedRaw} raw guardrail violation(s) under ${evaluation.scenarioLabel}.`)
-    whyItems.push('Use Auto-tune to search a safer operating point before the next release window.')
-  } else {
-    whyItems.push('Raw patch already satisfies all active guardrails in this operating point.')
-    whyItems.push(`Raw rollout has stronger queue improvement than projection for current settings.`)
-    whyItems.push('SafePatch still provides an auditable fallback if traffic pressure increases.')
-  }
-
-  const gateItems: string[] = []
-  if (recommendedId === 'hold') {
-    gateItems.push('Gate 0: Do not deploy this patch. Keep current production model.')
-    gateItems.push(
-      `Gate 1: Re-evaluate only after predicted breach minutes drop below ${Math.max(2, safe.queue.breachMinutes - 2)}.`,
-    )
-    gateItems.push(
-      `Gate 2: Require SafePatch readiness >= ${Math.max(70, safe.score)} and zero projected guardrail violations.`,
-    )
-  } else {
-    const firstGate = recommendedId === 'raw' ? 15 : 10
-    const secondGate = recommendedId === 'raw' ? 45 : 35
-    gateItems.push(
-      `Gate 1: ${firstGate}% canary for 3 minutes. Abort if queue exceeds ${OVERLOAD_THRESHOLD} for 2 consecutive minutes.`,
-    )
-    gateItems.push(`Gate 2: Raise to ${secondGate}% for 5 minutes if no guardrail alarms fire.`)
-    gateItems.push('Gate 3: 100% rollout with on-call watch and rollback hook armed for 15 minutes.')
-  }
-
-  let decisionTone: 'ship' | 'hold' = 'ship'
-  let decisionTitle = 'Ship recommended strategy'
-  let decisionDetail = `Recommendation: ${recommended.label}.`
-
-  if (recommendedId === 'hold') {
-    decisionTone = 'hold'
-    decisionTitle = 'Hold deployment'
-    decisionDetail = `Do not ship now. ${safe.reason}`
-  } else if (recommendedId === 'safe') {
-    decisionTitle = 'Ship SafePatch projection'
-    decisionDetail =
-      escalationDelta > 0 || breachDelta > 0
-        ? `Safe projection reduces incident pressure (${Math.max(escalationDelta, 0)} fewer escalations).`
-        : safe.reason
-  } else {
-    decisionTitle = 'Ship raw patch (already safe)'
-    decisionDetail = 'Raw patch is guardrail-safe in this operating point. Keep SafePatch as fallback.'
-  }
-
-  let readinessNote = 'Operational readiness is moderate.'
-  if (recommendedId === 'hold') {
-    readinessNote = 'Hold: current options do not clear risk and value thresholds simultaneously.'
-  } else if (recommended.score >= 84) {
-    readinessNote = 'High confidence: rollout can proceed through staged canary gates.'
-  } else if (recommended.score >= 68) {
-    readinessNote = 'Conditional ship: proceed with strict queue and policy monitoring.'
-  } else {
-    readinessNote = 'Borderline ship: proceed only if rollback triggers are fully staffed.'
-  }
-
-  return {
-    strategies,
-    recommendedId,
-    caption,
-    whyItems,
-    gateItems,
-    decisionTone,
-    decisionTitle,
-    decisionDetail,
-    readinessScore: recommended.score,
-    readinessNote,
-  }
-}
-
-function buildGuidance(
-  current: ScenarioEvaluation,
-  recommendedControls: ScenarioEvaluation,
-  strategyPack: StrategyPack,
-): GuidanceBundle {
-  const nearRecommendation =
-    Math.abs(current.controls.urgency - recommendedControls.controls.urgency) < 0.02 &&
-    Math.abs(current.controls.strictness - recommendedControls.controls.strictness) < 0.02
-
-  const recommendedControlsText = nearRecommendation
-    ? `Current settings are close to optimal for ${current.scenarioLabel}.`
-    : `Suggested controls for ${current.scenarioLabel}: urgency ${percent(recommendedControls.controls.urgency)}, strictness ${percent(recommendedControls.controls.strictness)}.`
-
-  const recommendedStrategy = getStrategy(strategyPack.strategies, strategyPack.recommendedId)
-
-  const actionItems: string[] = []
-  if (strategyPack.recommendedId === 'hold') {
-    actionItems.push('Do not deploy this patch in the current incident window.')
-    actionItems.push(
-      `Apply suggested controls (urgency ${percent(recommendedControls.controls.urgency)}, strictness ${percent(recommendedControls.controls.strictness)}) and re-evaluate.`,
-    )
-    actionItems.push('Escalate to release manager with exported decision and hold rationale.')
-  } else {
-    actionItems.push(`Deploy ${recommendedStrategy.label.toLowerCase()} using staged canary gates.`)
-    actionItems.push(`Primary rollback trigger: queue > ${OVERLOAD_THRESHOLD} for 2 consecutive minutes.`)
-    actionItems.push('Post release memo and JSON decision artifact in the release ticket.')
-  }
-
-  const rowsText = strategyPack.strategies
-    .map(
-      (strategy) =>
-        `${strategy.label}: guardrails ${strategy.guardrailViolations}, peak ${strategy.queue.peak}, breach ${strategy.queue.breachMinutes}, escalations ${strategy.queue.escalations}, readiness ${strategy.score}/100.`,
-    )
-    .join(' ')
-
-  const memoText = [
-    `SafePatch recommendation: ${strategyPack.decisionTone === 'ship' ? 'SHIP' : 'HOLD'}.`,
-    `Chosen strategy: ${recommendedStrategy.label}.`,
-    `Scenario: ${current.scenarioLabel}. Controls: urgency ${percent(current.controls.urgency)}, strictness ${percent(current.controls.strictness)}.`,
-    rowsText,
-    `Decision rationale: ${strategyPack.decisionDetail}`,
-  ].join(' ')
-
-  return {
-    recommendedControlsText,
-    actionItems,
-    memoText,
-  }
-}
-
-function toFrameUi(current: ScenarioEvaluation, strategyPack: StrategyPack, guidance: GuidanceBundle): ProofFrameUi {
-  const activeChecks = current.halfspaces.filter((halfspace) => halfspace.active).length
-  const rawPassed = Math.max(0, activeChecks - current.violatedRaw)
-  const safePassed = Math.max(0, activeChecks - current.violatedSafe)
-  const rawStrategy = getStrategy(strategyPack.strategies, 'raw')
-  const chosenStrategy = getStrategy(strategyPack.strategies, strategyPack.recommendedId)
-
-  const stageCaptionText =
-    current.violatedRaw > 0
-      ? `Raw step fails ${current.violatedRaw} check(s) -> projection reaches ${safePassed}/${activeChecks} checks passed.`
-      : `Raw step is already feasible -> SafePatch confirms ${safePassed}/${activeChecks} checks passed.`
-
-  return {
-    decisionTone: strategyPack.decisionTone,
-    decisionTitle: strategyPack.decisionTitle,
-    decisionDetail: strategyPack.decisionDetail,
-    readinessScoreText: strategyPack.readinessScore.toString(),
-    readinessNote: strategyPack.readinessNote,
-    checksPassedText: `${rawPassed}/${activeChecks} -> ${safePassed}/${activeChecks}`,
-    queuePeakText: `${rawStrategy.queue.peak.toLocaleString()} -> ${chosenStrategy.queue.peak.toLocaleString()}`,
-    recommendedControlsText: guidance.recommendedControlsText,
-    retainedValueText: `${Math.round(clampRange(current.retainedValueRatio, 0, 1.4) * 100)}%`,
-    stageCaptionText,
-    whyItems: strategyPack.whyItems,
-    gateItems: strategyPack.gateItems,
-    actionItems: guidance.actionItems,
-    memoText: guidance.memoText,
-  }
 }
 
 async function copyToClipboard(text: string): Promise<boolean> {
@@ -702,7 +437,7 @@ async function copyToClipboard(text: string): Promise<boolean> {
       await navigator.clipboard.writeText(normalized)
       return true
     } catch {
-      // Continue to DOM copy fallback.
+      // Continue to DOM fallback.
     }
   }
 
@@ -715,167 +450,281 @@ async function copyToClipboard(text: string): Promise<boolean> {
   helper.focus()
   helper.select()
 
-  let succeeded = false
+  let success = false
   try {
-    succeeded = document.execCommand('copy')
+    success = document.execCommand('copy')
   } catch {
-    succeeded = false
+    success = false
   }
 
   document.body.removeChild(helper)
-  return succeeded
+  return success
+}
+
+function buildDecisionPayload(evaluation: Evaluation): Record<string, unknown> {
+  return {
+    generated_at: new Date().toISOString(),
+    controls: {
+      preset: evaluation.state.presetId,
+      pressure: Number(evaluation.state.pressure.toFixed(4)),
+      tightness: Number(evaluation.state.tightness.toFixed(4)),
+      raw_step: {
+        x: Number(evaluation.state.rawStep.x.toFixed(4)),
+        y: Number(evaluation.state.rawStep.y.toFixed(4)),
+      },
+      mode: evaluation.state.mode,
+    },
+    decision: {
+      value: evaluation.decisionTone,
+      title: evaluation.decisionTitle,
+      detail: evaluation.decisionDetail,
+      readiness: evaluation.readiness,
+    },
+    metrics: {
+      checks_raw_passed: evaluation.checksRawPassed,
+      checks_safe_passed: evaluation.checksSafePassed,
+      checks_total: evaluation.activeCheckCount,
+      queue_peak_raw: evaluation.queueRawPeak,
+      queue_peak_safe: evaluation.queueSafePeak,
+      retained_gain_ratio: Number(evaluation.retainedGain.toFixed(4)),
+      raw_risk_ratio: Number(evaluation.rawRisk.toFixed(4)),
+      safe_risk_ratio: Number(evaluation.safeRisk.toFixed(4)),
+    },
+    active_constraints: evaluation.projection.activeSetIds,
+    lambdas: evaluation.projection.lambdaById,
+    rationale: evaluation.whyItems,
+    actions: evaluation.actionItems,
+  }
 }
 
 function start(): void {
-  const canvas = document.getElementById('scene-canvas') as HTMLCanvasElement | null
-  if (!canvas) {
+  const canvasNode = document.getElementById('scene-canvas') as HTMLCanvasElement | null
+  if (!canvasNode) {
     throw new Error('Missing canvas #scene-canvas')
   }
+  const canvas = canvasNode
 
   const renderer = new SceneRenderer(canvas)
   const ui = new UIController()
 
-  let currentEvaluation = evaluateScenario(DEFAULT_CONTROLS)
-  let recommendedEvaluation = findBestControls(currentEvaluation.controls.pressure, currentEvaluation.controls)
-  let strategyPack = buildStrategyPack(currentEvaluation)
-  let guidance = buildGuidance(currentEvaluation, recommendedEvaluation, strategyPack)
-  let transitionStart = performance.now()
-  let latestDecision: Record<string, unknown> = {}
-  let controlsPending = false
+  let targetState = cloneState(DEFAULT_STATE)
+  let tweenFrom = cloneState(DEFAULT_STATE)
+  let tweenTo = cloneState(DEFAULT_STATE)
+  let tweenStart = performance.now()
 
-  function applyControls(): void {
-    const controls = ui.readControlValues()
-    currentEvaluation = evaluateScenario(controls)
-    recommendedEvaluation = findBestControls(currentEvaluation.controls.pressure, currentEvaluation.controls)
-    strategyPack = buildStrategyPack(currentEvaluation)
-    guidance = buildGuidance(currentEvaluation, recommendedEvaluation, strategyPack)
+  let targetEvaluation = scenarioEvaluation(targetState)
+  const visibleCorrectionIds = new Set<string>(
+    targetEvaluation.projection.activeSetIds.filter((id) => (targetEvaluation.projection.lambdaById[id] ?? 0) > PROJECTION_TOLERANCE),
+  )
+  let highlightedConstraintId: string | null = [...visibleCorrectionIds][0] ?? null
 
-    ui.renderFrame(toFrameUi(currentEvaluation, strategyPack, guidance))
+  let teachingStart = performance.now()
+  let teachingActive = true
+  let dragging = false
+  let dragPointerId: number | null = null
 
-    const strategyMatrix = Object.fromEntries(
-      strategyPack.strategies.map((strategy) => [
-        strategy.id,
-        {
-          label: strategy.label,
-          guardrail_violations: strategy.guardrailViolations,
-          peak_queue: strategy.queue.peak,
-          breach_minutes: strategy.queue.breachMinutes,
-          escalations: strategy.queue.escalations,
-          retained_gain_pct: strategy.retainedGainPct,
-          readiness_score: strategy.score,
-          status: strategy.status,
-        },
-      ]),
-    )
+  let latestDecision = buildDecisionPayload(targetEvaluation)
 
-    latestDecision = {
-      generated_at: new Date().toISOString(),
-      scenario: currentEvaluation.scenarioLabel,
-      controls: {
-        pressure: Number(currentEvaluation.controls.pressure.toFixed(4)),
-        urgency: Number(currentEvaluation.controls.urgency.toFixed(4)),
-        strictness: Number(currentEvaluation.controls.strictness.toFixed(4)),
-      },
-      recommendation: {
-        decision: strategyPack.decisionTone === 'ship' ? 'ship' : 'hold',
-        strategy_id: strategyPack.recommendedId,
-        title: strategyPack.decisionTitle,
-        detail: strategyPack.decisionDetail,
-        readiness_score: strategyPack.readinessScore,
-      },
-      strategy_matrix: strategyMatrix,
-      why_recommended: strategyPack.whyItems,
-      rollout_playbook: strategyPack.gateItems,
-      actions: guidance.actionItems,
-      suggested_controls: {
-        urgency: Number(recommendedEvaluation.controls.urgency.toFixed(4)),
-        strictness: Number(recommendedEvaluation.controls.strictness.toFixed(4)),
-      },
-      method_signals: {
-        eta: Number(currentEvaluation.scenarioSignals.eta.toFixed(4)),
-        strictness_scale: Number(currentEvaluation.scenarioSignals.strictnessScale.toFixed(4)),
-        raw_risk_ratio: Number(currentEvaluation.rawRiskRatio.toFixed(4)),
-        safe_risk_ratio: Number(currentEvaluation.safeRiskRatio.toFixed(4)),
-        retained_gain_ratio: Number(currentEvaluation.retainedValueRatio.toFixed(4)),
-        active_constraints: currentEvaluation.projectedStep.activeSetIds,
-        max_violation_raw: Number(currentEvaluation.projectedStep.maxViolationStep0.toFixed(4)),
-        max_violation_projected: Number(currentEvaluation.projectedStep.maxViolationProjected.toFixed(4)),
-      },
-    }
-
-    transitionStart = performance.now()
-    controlsPending = false
-    ui.setRunPending(false)
+  function sampleState(now: number): InteractiveState {
+    const progress = clamp((now - tweenStart) / UPDATE_ANIMATION_MS)
+    return lerpState(tweenFrom, tweenTo, easeOutCubic(progress))
   }
 
-  function markControlsPending(): void {
-    controlsPending = true
-    ui.setRunPending(true)
+  function syncVisibleCorrections(evaluation: Evaluation): void {
+    const activeIds = evaluation.projection.activeSetIds.filter(
+      (id) => (evaluation.projection.lambdaById[id] ?? 0) > PROJECTION_TOLERANCE,
+    )
+
+    const activeSet = new Set(activeIds)
+
+    for (const id of Array.from(visibleCorrectionIds)) {
+      if (!activeSet.has(id)) {
+        visibleCorrectionIds.delete(id)
+      }
+    }
+
+    for (const id of activeIds) {
+      if (!visibleCorrectionIds.has(id)) {
+        visibleCorrectionIds.add(id)
+      }
+    }
+
+    if (highlightedConstraintId && !visibleCorrectionIds.has(highlightedConstraintId)) {
+      highlightedConstraintId = null
+    }
+
+    if (!highlightedConstraintId) {
+      highlightedConstraintId = activeIds[0] ?? null
+    }
+  }
+
+  function syncStaticPanels(): void {
+    ui.renderDetails(buildDetailFrame(targetEvaluation))
+    ui.renderForceBars(buildForceBars(targetEvaluation, visibleCorrectionIds))
+    ui.toggleForcePanel(targetState.mode === 'forces')
+    latestDecision = buildDecisionPayload(targetEvaluation)
+  }
+
+  function retarget(next: Partial<InteractiveState>, stopTeaching = true): void {
+    const now = performance.now()
+    const current = sampleState(now)
+
+    const merged: InteractiveState = {
+      ...targetState,
+      ...next,
+      rawStep: next.rawStep ? { ...next.rawStep } : { ...targetState.rawStep },
+    }
+
+    targetState = merged
+    targetEvaluation = scenarioEvaluation(targetState)
+    syncVisibleCorrections(targetEvaluation)
+
+    tweenFrom = current
+    tweenTo = cloneState(targetState)
+    tweenStart = now
+
+    if (stopTeaching) {
+      teachingActive = false
+    }
+
+    syncStaticPanels()
+  }
+
+  function onDragStart(event: PointerEvent): void {
+    if (event.button !== 0) {
+      return
+    }
+
+    const world = renderer.clientToWorld(event.clientX, event.clientY)
+    if (!world) {
+      return
+    }
+
+    dragging = true
+    dragPointerId = event.pointerId
+    canvas.setPointerCapture(event.pointerId)
+    canvas.classList.add('dragging')
+    ui.setDragActive(true)
+
+    const nearHandle = renderer.isNearRawHandle(event.clientX, event.clientY, targetEvaluation.projection.step0)
+    if (!nearHandle) {
+      const clampedStep = clampRawStep(world, targetEvaluation.halfspaces)
+      retarget({ rawStep: clampedStep }, true)
+    }
+
+    event.preventDefault()
+  }
+
+  function onDragMove(event: PointerEvent): void {
+    if (!dragging || dragPointerId !== event.pointerId) {
+      return
+    }
+
+    const world = renderer.clientToWorld(event.clientX, event.clientY)
+    if (!world) {
+      return
+    }
+
+    const clampedStep = clampRawStep(world, targetEvaluation.halfspaces)
+    retarget({ rawStep: clampedStep }, true)
+  }
+
+  function onDragEnd(event: PointerEvent): void {
+    if (!dragging || dragPointerId !== event.pointerId) {
+      return
+    }
+
+    dragging = false
+    dragPointerId = null
+    canvas.classList.remove('dragging')
+    ui.setDragActive(false)
+
+    if (canvas.hasPointerCapture(event.pointerId)) {
+      canvas.releasePointerCapture(event.pointerId)
+    }
   }
 
   function frame(now: number): void {
-    const progress = clamp01((now - transitionStart) / TRANSITION_MS)
+    const displayedState = sampleState(now)
+    const displayedEvaluation = scenarioEvaluation(displayedState)
 
-    const rawStrategy = getStrategy(strategyPack.strategies, 'raw')
-    const targetStrategy = getStrategy(strategyPack.strategies, strategyPack.recommendedId)
+    const teachingProgress = teachingActive ? clamp((now - teachingStart) / TEACHING_ANIMATION_MS) : 1
+    if (teachingActive && teachingProgress >= 1) {
+      teachingActive = false
+    }
 
     renderer.render({
-      halfspaces: copyHalfspaces(currentEvaluation.halfspaces),
-      step0: currentEvaluation.projectedStep.step0,
-      projectedStep: currentEvaluation.projectedStep.projectedStep,
-      gradient: currentEvaluation.scenarioSignals.gradient,
-      queueRawSeries: rawStrategy.queue.series,
-      queueSafeSeries: targetStrategy.queue.series,
-      overloadThreshold: OVERLOAD_THRESHOLD,
-      transitionProgress: progress,
+      halfspaces: copyHalfspaces(displayedEvaluation.halfspaces),
+      projection: displayedEvaluation.projection,
+      mode: displayedState.mode,
+      teachingProgress,
       clockMs: now,
-      constraintDiagnostics: currentEvaluation.projectedStep.diagnostics,
-      activeSetIds: currentEvaluation.projectedStep.activeSetIds,
+      highlightedConstraintId,
+      visibleCorrectionIds: [...visibleCorrectionIds],
+      dragActive: dragging,
     })
+
+    ui.renderOutcome(buildOutcomeFrame(displayedEvaluation, displayedState.mode, teachingProgress, dragging))
 
     requestAnimationFrame(frame)
   }
 
-  ui.onControlsChange(() => {
-    markControlsPending()
+  ui.onPresetChange((controls) => {
+    const preset = PRESETS[controls.presetId]
+    retarget({
+      presetId: preset.id,
+      pressure: preset.pressure,
+    })
   })
 
-  ui.onRunCheck(() => {
-    if (!controlsPending) {
-      transitionStart = performance.now()
-      return
-    }
-    applyControls()
+  ui.onTightnessChange((controls) => {
+    retarget({ tightness: controls.tightness })
   })
 
-  ui.onAutoTune(() => {
-    const tuned = findBestControls(currentEvaluation.controls.pressure, currentEvaluation.controls)
-    ui.setControlValues({ urgency: tuned.controls.urgency, strictness: tuned.controls.strictness })
-    markControlsPending()
-  })
-
-  ui.onReset(() => {
-    ui.setControlValues(DEFAULT_CONTROLS)
-    markControlsPending()
+  ui.onModeChange((mode) => {
+    retarget({ mode }, false)
   })
 
   ui.onReplay(() => {
-    transitionStart = performance.now()
+    teachingActive = true
+    teachingStart = performance.now()
+  })
+
+  ui.onForceToggle((constraintId) => {
+    if (visibleCorrectionIds.has(constraintId)) {
+      visibleCorrectionIds.delete(constraintId)
+      if (highlightedConstraintId === constraintId) {
+        highlightedConstraintId = null
+      }
+    } else {
+      visibleCorrectionIds.add(constraintId)
+      highlightedConstraintId = constraintId
+    }
+
+    const visibleList = Array.from(visibleCorrectionIds)
+    if (!highlightedConstraintId && visibleList.length > 0) {
+      highlightedConstraintId = visibleList[visibleList.length - 1]
+    }
+
+    ui.renderForceBars(buildForceBars(targetEvaluation, visibleCorrectionIds))
   })
 
   ui.onCopyMemo((memoText) => copyToClipboard(memoText))
-
   ui.onExport(() => {
     exportDecision(latestDecision)
   })
+
+  canvas.addEventListener('pointerdown', onDragStart)
+  canvas.addEventListener('pointermove', onDragMove)
+  canvas.addEventListener('pointerup', onDragEnd)
+  canvas.addEventListener('pointercancel', onDragEnd)
 
   window.addEventListener('resize', () => {
     renderer.resize()
   })
 
   renderer.resize()
-  ui.setControlValues(DEFAULT_CONTROLS)
-  applyControls()
+  syncStaticPanels()
   requestAnimationFrame(frame)
 }
 
