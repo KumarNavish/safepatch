@@ -11,6 +11,8 @@ import type { DetailFrameUi, ForceBarUi, MathTermUi, OutcomeFrameUi, PresetId, S
 const ETA = 1
 const PROJECTION_TOLERANCE = 1e-6
 const UPDATE_ANIMATION_MS = 320
+const DRAG_ANIMATION_MS = 90
+const MODE_ANIMATION_MS = 220
 const TEACHING_ANIMATION_MS = 2100
 const MAX_RAW_RADIUS_FACTOR = 1.25
 
@@ -121,6 +123,12 @@ interface Evaluation {
   whyItems: string[]
   actionItems: string[]
   memoText: string
+}
+
+interface RetargetOptions {
+  stopTeaching?: boolean
+  durationMs?: number
+  immediate?: boolean
 }
 
 const DEFAULT_STATE: InteractiveState = {
@@ -366,6 +374,11 @@ function forceColor(constraintId: string): string {
   return CONSTRAINT_PALETTE[index % CONSTRAINT_PALETTE.length]
 }
 
+function constraintMathIndex(constraintId: string): number {
+  const index = BASE_HALFSPACES.findIndex((halfspace) => halfspace.id === constraintId)
+  return index >= 0 ? index + 1 : 0
+}
+
 function buildForceBars(evaluation: Evaluation, visibleIds: Set<string>): ForceBarUi[] {
   return evaluation.projection.diagnostics
     .filter((diagnostic) => diagnostic.active && diagnostic.lambda > PROJECTION_TOLERANCE)
@@ -386,11 +399,13 @@ function buildMathTerms(evaluation: Evaluation): MathTermUi[] {
     .slice(0, 5)
     .map((diagnostic) => {
       const correction = evaluation.projection.correctionById[diagnostic.id] ?? vec(0, 0)
+      const mathIndex = constraintMathIndex(diagnostic.id)
+      const suffix = mathIndex > 0 ? `${mathIndex}` : diagnostic.id
       return {
         id: diagnostic.id,
         label: diagnostic.label,
-        lambdaTex: String.raw`\lambda_{${diagnostic.id}}=${diagnostic.lambda.toFixed(3)}`,
-        vectorTex: String.raw`-\eta\,\lambda_{${diagnostic.id}}\,n_{${diagnostic.id}}=\left(${correction.x.toFixed(
+        lambdaTex: String.raw`\lambda_{${suffix}}=${diagnostic.lambda.toFixed(3)}`,
+        vectorTex: String.raw`-\eta\,\lambda_{${suffix}}\,n_{${suffix}}=\left(${correction.x.toFixed(
           3,
         )},\;${correction.y.toFixed(3)}\right)`,
         color: forceColor(diagnostic.id),
@@ -417,25 +432,25 @@ function buildOutcomeFrame(
 
   let stageCaption: string
   if (mode === 'forces') {
-    stageCaption = 'Forces view: Δ* = Δ0 + Σ(−η λ n). Click λ bars to isolate each correction term.'
+    stageCaption = 'Forces view: each λ bar is a correction that pushes the patch back inside policy.'
   } else if (teachingProgress < 0.28) {
-    stageCaption = 'Step 1: Raw patch Δ0 grows from the origin.'
+    stageCaption = 'Step 1: raw patch grows from the origin.'
   } else if (teachingProgress < 0.46) {
-    stageCaption = 'Step 2: Δ0 crosses a guardrail boundary (collision).'
+    stageCaption = 'Step 2: raw patch crosses a guardrail boundary.'
   } else if (teachingProgress < 0.72) {
-    stageCaption = 'Step 3: Active constraint applies push-back correction.'
+    stageCaption = 'Step 3: active check applies a push-back correction.'
   } else if (teachingProgress < 1) {
-    stageCaption = 'Step 4: Corrected patch Δ* lands inside the feasible region.'
+    stageCaption = 'Step 4: safe projected patch lands inside the feasible region.'
   } else if (dragging) {
     const queueNarrative =
       evaluation.queuePeakDelta >= 0
         ? `${Math.abs(evaluation.queuePeakDelta).toLocaleString()} fewer queued`
         : `${Math.abs(evaluation.queuePeakDelta).toLocaleString()} more queued`
-    stageCaption = `Dragging Δ0: ${queueNarrative}, correction cost ${evaluation.correctionNorm.toFixed(3)}.`
+    stageCaption = `Live result: ${queueNarrative}; correction cost ${evaluation.correctionNorm.toFixed(3)}.`
   } else if (dominantLabel && dominantLambda > PROJECTION_TOLERANCE) {
-    stageCaption = `Dominant correction: ${dominantLabel} (λ=${dominantLambda.toFixed(3)}).`
+    stageCaption = `Dominant blocker right now: ${dominantLabel} (λ=${dominantLambda.toFixed(3)}).`
   } else {
-    stageCaption = 'Geometry view: Δ0 is already feasible, so Δ* matches it with no correction force.'
+    stageCaption = 'Raw patch is already feasible, so no correction force is needed.'
   }
 
   return {
@@ -589,6 +604,7 @@ function start(): void {
   let tweenFrom = cloneState(DEFAULT_STATE)
   let tweenTo = cloneState(DEFAULT_STATE)
   let tweenStart = performance.now()
+  let tweenDurationMs = UPDATE_ANIMATION_MS
 
   let targetEvaluation = scenarioEvaluation(targetState)
   const visibleCorrectionIds = new Set<string>(
@@ -606,7 +622,7 @@ function start(): void {
   let latestDecision = buildDecisionPayload(targetEvaluation)
 
   function sampleState(now: number): InteractiveState {
-    const progress = clamp((now - tweenStart) / UPDATE_ANIMATION_MS)
+    const progress = clamp((now - tweenStart) / Math.max(1, tweenDurationMs))
     return lerpState(tweenFrom, tweenTo, easeOutCubic(progress))
   }
 
@@ -645,7 +661,11 @@ function start(): void {
     latestDecision = buildDecisionPayload(targetEvaluation)
   }
 
-  function retarget(next: Partial<InteractiveState>, stopTeaching = true): void {
+  function retarget(next: Partial<InteractiveState>, options: RetargetOptions = {}): void {
+    const stopTeaching = options.stopTeaching ?? true
+    const durationMs = Math.max(1, options.durationMs ?? UPDATE_ANIMATION_MS)
+    const immediate = options.immediate ?? false
+
     const now = performance.now()
     const current = sampleState(now)
 
@@ -661,9 +681,17 @@ function start(): void {
     rawTrail = [...rawTrail.slice(-30), { ...targetEvaluation.projection.step0 }]
     safeTrail = [...safeTrail.slice(-30), { ...targetEvaluation.projection.projectedStep }]
 
-    tweenFrom = current
-    tweenTo = cloneState(targetState)
-    tweenStart = now
+    if (immediate) {
+      tweenFrom = cloneState(targetState)
+      tweenTo = cloneState(targetState)
+      tweenDurationMs = 1
+      tweenStart = now
+    } else {
+      tweenFrom = current
+      tweenTo = cloneState(targetState)
+      tweenDurationMs = durationMs
+      tweenStart = now
+    }
 
     if (stopTeaching) {
       teachingActive = false
@@ -691,7 +719,7 @@ function start(): void {
     const nearHandle = renderer.isNearRawHandle(event.clientX, event.clientY, targetEvaluation.projection.step0)
     if (!nearHandle) {
       const clampedStep = clampRawStep(world, targetEvaluation.halfspaces)
-      retarget({ rawStep: clampedStep }, true)
+      retarget({ rawStep: clampedStep }, { stopTeaching: true, durationMs: DRAG_ANIMATION_MS })
     }
 
     event.preventDefault()
@@ -708,7 +736,7 @@ function start(): void {
     }
 
     const clampedStep = clampRawStep(world, targetEvaluation.halfspaces)
-    retarget({ rawStep: clampedStep }, true)
+    retarget({ rawStep: clampedStep }, { stopTeaching: true, durationMs: DRAG_ANIMATION_MS })
   }
 
   function onDragEnd(event: PointerEvent): void {
@@ -755,18 +783,21 @@ function start(): void {
 
   ui.onPresetChange((controls) => {
     const preset = PRESETS[controls.presetId]
-    retarget({
-      presetId: preset.id,
-      pressure: preset.pressure,
-    })
+    retarget(
+      {
+        presetId: preset.id,
+        pressure: preset.pressure,
+      },
+      { durationMs: UPDATE_ANIMATION_MS },
+    )
   })
 
   ui.onTightnessChange((controls) => {
-    retarget({ tightness: controls.tightness })
+    retarget({ tightness: controls.tightness }, { durationMs: UPDATE_ANIMATION_MS })
   })
 
   ui.onModeChange((mode) => {
-    retarget({ mode }, false)
+    retarget({ mode }, { stopTeaching: false, durationMs: MODE_ANIMATION_MS })
   })
 
   ui.onReplay(() => {

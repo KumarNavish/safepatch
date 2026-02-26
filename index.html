@@ -20,17 +20,21 @@
     <main class="app-shell">
       <header class="hero">
         <p class="eyebrow">SafePatch</p>
-        <h1>Drag a risky patch. Ship the closest safe one.</h1>
+        <h1>Steer a patch. See if it can safely ship.</h1>
         <p class="hero-copy">
-          Raw patch (<strong>Δ0</strong>) can cross guardrails. SafePatch continuously projects it to the nearest feasible
-          patch (<strong>Δ*</strong>) and returns a clear ship/hold decision with reasons.
+          Move <span id="inline-delta-zero" class="math-inline"></span> directly on the stage. SafePatch keeps as much useful
+          change as possible while enforcing release checks, then returns a ship/hold decision with reasons.
         </p>
+        <p id="hero-equation" class="hero-equation" aria-label="Projection equation"></p>
       </header>
 
       <section class="top-grid">
         <section class="stage-card" aria-label="SafePatch interaction stage">
           <div class="stage-header">
-            <p id="stage-caption" class="stage-caption">Drag Δ0. SafePatch updates the safe projection continuously.</p>
+            <div class="stage-copy">
+              <p id="stage-caption" class="stage-caption">Drag the red tip. The safe blue patch updates continuously.</p>
+              <p id="projection-badge" class="projection-badge" aria-label="Projection badge"></p>
+            </div>
 
             <div class="mode-toggle" role="group" aria-label="Visualization mode">
               <button class="mode-btn active" data-mode="geometry" type="button">Geometry</button>
@@ -40,7 +44,7 @@
 
           <canvas id="scene-canvas" class="scene-canvas" aria-label="Projection geometry and correction forces"></canvas>
 
-          <p id="drag-hint" class="drag-hint">Drag directly on the canvas or grab the Δ0 tip.</p>
+          <p id="drag-hint" class="drag-hint">Direct manipulation: drag anywhere or grab the raw tip.</p>
 
           <section class="impact-strip" aria-label="Immediate interaction impact">
             <article class="impact-card">
@@ -75,6 +79,7 @@
               <label for="tightness-slider">Policy tightness</label>
               <span id="tightness-value" class="tightness-value">62%</span>
             </div>
+            <p id="tightness-formula" class="tightness-formula" aria-label="Tightness formula"></p>
             <input id="tightness-slider" type="range" min="20" max="90" value="62" />
           </section>
 

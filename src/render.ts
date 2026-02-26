@@ -45,13 +45,13 @@ interface TeachingBeats {
   safe: number
 }
 
-const RAW_COLOR = '#e44f73'
-const SAFE_COLOR = '#2b67f6'
-const PUSH_COLOR = '#ea9a2d'
-const FEASIBLE_FILL = 'rgba(21, 169, 143, 0.11)'
-const FEASIBLE_STROKE = 'rgba(15, 143, 116, 0.68)'
-const LABEL_BG = 'rgba(255, 255, 255, 0.95)'
-const LABEL_BORDER = 'rgba(171, 187, 208, 0.8)'
+const RAW_COLOR = '#e5484d'
+const SAFE_COLOR = '#1d4ed8'
+const PUSH_COLOR = '#f59f0b'
+const FEASIBLE_FILL = 'rgba(22, 163, 74, 0.10)'
+const FEASIBLE_STROKE = 'rgba(22, 163, 74, 0.54)'
+const LABEL_BG = 'rgba(255, 255, 255, 0.96)'
+const LABEL_BORDER = 'rgba(173, 188, 209, 0.62)'
 
 function clamp(value: number, min = 0, max = 1): number {
   return Math.min(Math.max(value, min), max)
@@ -60,6 +60,13 @@ function clamp(value: number, min = 0, max = 1): number {
 function easeOutCubic(value: number): number {
   const t = clamp(value)
   return 1 - (1 - t) ** 3
+}
+
+function easeOutBack(value: number): number {
+  const t = clamp(value)
+  const c1 = 1.4
+  const c3 = c1 + 1
+  return 1 + c3 * (t - 1) ** 3 + c1 * (t - 1) ** 2
 }
 
 function phaseWindow(progress: number, start: number, end: number): number {
@@ -193,8 +200,10 @@ export class SceneRenderer {
       hitBeat: beats.hit,
     })
 
-    this.drawTrails(mapper, input.rawTrail, RAW_COLOR)
-    this.drawTrails(mapper, input.safeTrail, SAFE_COLOR)
+    if (input.dragActive && input.mode === 'geometry') {
+      this.drawTrails(mapper, input.rawTrail, RAW_COLOR)
+      this.drawTrails(mapper, input.safeTrail, SAFE_COLOR)
+    }
 
     if (input.mode === 'geometry') {
       this.drawGeometryMode({
@@ -214,15 +223,7 @@ export class SceneRenderer {
       })
     }
 
-    this.ctx.font = '600 10px "Sora", sans-serif'
-    this.ctx.fillStyle = '#496489'
-    this.ctx.fillText(
-      input.mode === 'geometry'
-        ? 'Geometry: collision -> correction -> projected safe step.'
-        : 'Forces: visible arrows are active correction terms.',
-      frame.x + 10,
-      frame.y + frame.height - 8,
-    )
+    this.drawLegend(plotRect, input.mode)
   }
 
   private drawTrails(mapper: Mapper, points: Vec2[], color: string): void {
@@ -230,7 +231,7 @@ export class SceneRenderer {
       return
     }
 
-    const start = Math.max(0, points.length - 18)
+    const start = Math.max(0, points.length - 10)
     for (let i = start + 1; i < points.length; i += 1) {
       const alpha = (i - start) / Math.max(1, points.length - start)
       const from = mapper.worldToCanvas(points[i - 1])
@@ -238,8 +239,8 @@ export class SceneRenderer {
       this.ctx.beginPath()
       this.ctx.moveTo(from.x, from.y)
       this.ctx.lineTo(to.x, to.y)
-      this.ctx.strokeStyle = withAlpha(color, 0.06 + alpha * 0.18)
-      this.ctx.lineWidth = 1.1 + alpha * 1.1
+      this.ctx.strokeStyle = withAlpha(color, 0.04 + alpha * 0.1)
+      this.ctx.lineWidth = 0.8 + alpha * 0.8
       this.ctx.lineCap = 'round'
       this.ctx.stroke()
     }
@@ -261,15 +262,10 @@ export class SceneRenderer {
 
   private drawBackdrop(width: number, height: number): void {
     const gradient = this.ctx.createLinearGradient(0, 0, 0, height)
-    gradient.addColorStop(0, '#fbfdff')
-    gradient.addColorStop(1, '#f4f8ff')
+    gradient.addColorStop(0, '#ffffff')
+    gradient.addColorStop(1, '#f9fbff')
     this.ctx.fillStyle = gradient
     this.ctx.fillRect(0, 0, width, height)
-
-    this.ctx.fillStyle = 'rgba(43, 103, 246, 0.06)'
-    this.ctx.beginPath()
-    this.ctx.ellipse(width * 0.18, height * 0.09, width * 0.32, height * 0.2, 0, 0, Math.PI * 2)
-    this.ctx.fill()
   }
 
   private createMapper(rect: Rect, halfspaces: Halfspace[]): Mapper {
@@ -291,28 +287,46 @@ export class SceneRenderer {
   private drawStageSurface(rect: Rect): void {
     const gradient = this.ctx.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.height)
     gradient.addColorStop(0, '#ffffff')
-    gradient.addColorStop(1, '#f8fbff')
+    gradient.addColorStop(1, '#fbfdff')
     this.ctx.fillStyle = gradient
-    this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
-
-    const halo = this.ctx.createRadialGradient(
-      rect.x + rect.width * 0.72,
-      rect.y + rect.height * 0.25,
-      6,
-      rect.x + rect.width * 0.72,
-      rect.y + rect.height * 0.25,
-      rect.width * 0.55,
-    )
-    halo.addColorStop(0, 'rgba(43, 103, 246, 0.10)')
-    halo.addColorStop(1, 'rgba(43, 103, 246, 0)')
-    this.ctx.fillStyle = halo
     this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
 
     this.ctx.beginPath()
     this.ctx.rect(rect.x, rect.y, rect.width, rect.height)
-    this.ctx.strokeStyle = 'rgba(192, 205, 224, 0.9)'
+    this.ctx.strokeStyle = 'rgba(190, 205, 226, 0.86)'
     this.ctx.lineWidth = 1
     this.ctx.stroke()
+  }
+
+  private drawLegend(rect: Rect, mode: SceneMode): void {
+    const items =
+      mode === 'geometry'
+        ? [
+            { label: 'Raw Δ0', color: RAW_COLOR },
+            { label: 'Safe Δ*', color: SAFE_COLOR },
+            { label: 'Push-back', color: PUSH_COLOR },
+          ]
+        : [
+            { label: 'Raw Δ0', color: RAW_COLOR },
+            { label: 'Corrections', color: PUSH_COLOR },
+            { label: 'Safe Δ*', color: SAFE_COLOR },
+          ]
+
+    let cursorX = rect.x + 10
+    const y = rect.y + 12
+
+    for (const item of items) {
+      this.ctx.beginPath()
+      this.ctx.arc(cursorX, y, 3.2, 0, Math.PI * 2)
+      this.ctx.fillStyle = item.color
+      this.ctx.fill()
+
+      this.ctx.font = '600 10px "IBM Plex Mono", monospace'
+      this.ctx.fillStyle = '#415c7e'
+      this.ctx.fillText(item.label, cursorX + 8, y + 3.5)
+
+      cursorX += this.ctx.measureText(item.label).width + 28
+    }
   }
 
   private drawFeasibleRegion(halfspaces: Halfspace[], mapper: Mapper): void {
@@ -366,28 +380,28 @@ export class SceneRenderer {
         return
       }
 
-      let stroke = 'rgba(143, 161, 186, 0.42)'
-      let width = 1.2
+      let stroke = 'rgba(147, 164, 188, 0.34)'
+      let width = 1.1
 
       if (input.mode === 'forces') {
         if (isActive && input.visibleSet.has(halfspace.id)) {
-          stroke = withAlpha(baseColor, 0.82)
-          width = 2.1
+          stroke = withAlpha(baseColor, 0.78)
+          width = 2
         } else if (isActive) {
-          stroke = withAlpha(baseColor, 0.22)
-          width = 1.1
+          stroke = withAlpha(baseColor, 0.18)
+          width = 1
         }
       } else if (isPrimary) {
-        stroke = withAlpha(PUSH_COLOR, 0.52 + input.hitBeat * 0.4)
-        width = 1.4 + input.hitBeat * 0.9
+        stroke = withAlpha(PUSH_COLOR, 0.5 + input.hitBeat * 0.42)
+        width = 1.3 + input.hitBeat * 1
       } else if (input.mode === 'geometry') {
-        stroke = 'rgba(143, 161, 186, 0.16)'
-        width = 1
+        stroke = 'rgba(143, 161, 186, 0.2)'
+        width = 0.95
       }
 
       if (isHighlighted) {
-        stroke = withAlpha(baseColor, 0.96)
-        width = 2.3
+        stroke = withAlpha(baseColor, 0.94)
+        width = 2.1
       }
 
       this.ctx.beginPath()
@@ -403,8 +417,8 @@ export class SceneRenderer {
           anchor: labelAnchor,
           text: halfspace.label,
           color: baseColor,
-          preferredDx: 8,
-          preferredDy: -20,
+          preferredDx: 10,
+          preferredDy: -18,
         })
       }
     })
@@ -426,7 +440,7 @@ export class SceneRenderer {
     const rawVisibleWorld = lerp(originWorld, rawWorld, input.beats.raw)
     const rawVisible = input.mapper.worldToCanvas(rawVisibleWorld)
 
-    this.drawArrow(origin, rawVisible, RAW_COLOR, 2.35, false, true)
+    this.drawArrow(origin, rawVisible, RAW_COLOR, 2.5, false, true)
     this.drawNode(origin, '#7292b8', 3.8)
     this.drawNode(rawVisible, RAW_COLOR, 4)
 
@@ -437,20 +451,22 @@ export class SceneRenderer {
       if (boundaryHit) {
         hitCanvas = input.mapper.worldToCanvas(boundaryHit)
 
-        const ringRadius = 7 + input.beats.hit * 6 + input.pulse * 1.4
+        const ringRadius = 8 + input.beats.hit * 8 + input.pulse * 1.7
         this.ctx.beginPath()
         this.ctx.arc(hitCanvas.x, hitCanvas.y, ringRadius, 0, Math.PI * 2)
-        this.ctx.strokeStyle = withAlpha(PUSH_COLOR, 0.28 + input.beats.hit * 0.4)
-        this.ctx.lineWidth = 1.3
+        this.ctx.strokeStyle = withAlpha(PUSH_COLOR, 0.3 + input.beats.hit * 0.45)
+        this.ctx.lineWidth = 1.4
         this.ctx.stroke()
 
-        this.drawLabel({
-          anchor: hitCanvas,
-          text: 'boundary collision',
-          color: PUSH_COLOR,
-          preferredDx: 10,
-          preferredDy: -30,
-        })
+        if (!input.dragActive) {
+          this.drawLabel({
+            anchor: hitCanvas,
+            text: 'constraint hit',
+            color: PUSH_COLOR,
+            preferredDx: 10,
+            preferredDy: -30,
+          })
+        }
       }
     }
 
@@ -460,19 +476,21 @@ export class SceneRenderer {
         input.mapper.worldToCanvas(rawWorld),
         input.mapper.worldToCanvas(correctionVisible),
         PUSH_COLOR,
-        2,
-        false,
+        1.9,
+        true,
         true,
       )
 
       if (hitCanvas) {
-        const normalTip = input.mapper.worldToCanvas(add(input.mapper.canvasToWorld(hitCanvas), scale(normalize(input.primaryDiagnostic?.normal ?? vec(0, 0)), 0.15)))
+        const normalTip = input.mapper.worldToCanvas(
+          add(input.mapper.canvasToWorld(hitCanvas), scale(normalize(input.primaryDiagnostic?.normal ?? vec(0, 0)), 0.16)),
+        )
         this.drawArrow(hitCanvas, normalTip, PUSH_COLOR, 1.2, true, false)
       }
     }
 
     if (input.beats.safe > 0.02) {
-      const safeVisibleWorld = lerp(originWorld, safeWorld, input.beats.safe)
+      const safeVisibleWorld = lerp(originWorld, safeWorld, easeOutBack(input.beats.safe))
       const safeVisible = input.mapper.worldToCanvas(safeVisibleWorld)
       this.drawArrow(origin, safeVisible, SAFE_COLOR, 2.6, false, true)
       this.drawNode(safeVisible, SAFE_COLOR, 4)
@@ -480,18 +498,18 @@ export class SceneRenderer {
 
     this.drawLabel({
       anchor: input.mapper.worldToCanvas(rawWorld),
-      text: input.dragActive ? 'Δ0 dragging' : 'Δ0 raw patch',
+      text: 'raw Δ0',
       color: RAW_COLOR,
       preferredDx: 10,
-      preferredDy: 8,
+      preferredDy: 10,
     })
 
     this.drawLabel({
       anchor: input.mapper.worldToCanvas(safeWorld),
-      text: 'Δ* projected safe patch',
+      text: 'safe Δ*',
       color: SAFE_COLOR,
       preferredDx: 10,
-      preferredDy: -16,
+      preferredDy: -18,
     })
   }
 
@@ -505,7 +523,7 @@ export class SceneRenderer {
     const rawTip = input.mapper.worldToCanvas(input.projection.step0)
     const safeTip = input.mapper.worldToCanvas(input.projection.projectedStep)
 
-    this.drawArrow(origin, rawTip, RAW_COLOR, 2.2, false, true)
+    this.drawArrow(origin, rawTip, RAW_COLOR, 2.3, false, true)
     this.drawNode(origin, '#7292b8', 3.8)
     this.drawNode(rawTip, RAW_COLOR, 4)
 
@@ -532,15 +550,15 @@ export class SceneRenderer {
           input.mapper.worldToCanvas(cursor),
           input.mapper.worldToCanvas(next),
           withAlpha(color, isFocused ? 1 : 0.86),
-          isFocused ? 2.3 : 1.8,
-          false,
+          isFocused ? 2.2 : 1.7,
+          !isFocused,
           true,
         )
 
         if (isFocused) {
           this.drawLabel({
             anchor: input.mapper.worldToCanvas(lerp(cursor, next, 0.5)),
-            text: `-η λ n  (λ=${lambda.toFixed(3)})`,
+            text: `correction (λ=${lambda.toFixed(3)})`,
             color,
             preferredDx: 8,
             preferredDy: -20,
@@ -552,12 +570,12 @@ export class SceneRenderer {
     }
 
     this.drawArrow(origin, safeTip, SAFE_COLOR, 2.6, false, true)
-    this.drawArrow(rawTip, safeTip, withAlpha(SAFE_COLOR, 0.42), 1.2, true, false)
+    this.drawArrow(rawTip, safeTip, withAlpha(SAFE_COLOR, 0.42), 1.3, true, false)
     this.drawNode(safeTip, SAFE_COLOR, 4)
 
     this.drawLabel({
       anchor: rawTip,
-      text: 'Δ0',
+      text: 'raw Δ0',
       color: RAW_COLOR,
       preferredDx: 10,
       preferredDy: -18,
@@ -565,7 +583,7 @@ export class SceneRenderer {
 
     this.drawLabel({
       anchor: safeTip,
-      text: 'Δ*',
+      text: 'safe Δ*',
       color: SAFE_COLOR,
       preferredDx: 10,
       preferredDy: 8,
@@ -583,15 +601,15 @@ export class SceneRenderer {
 
     this.ctx.save()
     if (dashed) {
-      this.ctx.setLineDash([6, 4])
+      this.ctx.setLineDash([5, 4])
     }
 
     if (glow) {
       this.ctx.beginPath()
       this.ctx.moveTo(from.x, from.y)
       this.ctx.lineTo(to.x, to.y)
-      this.ctx.strokeStyle = withAlpha(color, 0.16)
-      this.ctx.lineWidth = width + 5
+      this.ctx.strokeStyle = withAlpha(color, 0.14)
+      this.ctx.lineWidth = width + 3.2
       this.ctx.lineCap = 'round'
       this.ctx.stroke()
     }
@@ -621,8 +639,8 @@ export class SceneRenderer {
     this.ctx.fill()
 
     this.ctx.beginPath()
-    this.ctx.arc(point.x, point.y, radius + 4.2, 0, Math.PI * 2)
-    this.ctx.strokeStyle = withAlpha(color, 0.28)
+    this.ctx.arc(point.x, point.y, radius + 3.5, 0, Math.PI * 2)
+    this.ctx.strokeStyle = withAlpha(color, 0.24)
     this.ctx.lineWidth = 1
     this.ctx.stroke()
   }
@@ -673,11 +691,11 @@ export class SceneRenderer {
 
     this.labelBoxes.push(chosen)
 
-    this.drawRoundedRect(chosen.x, chosen.y, chosen.width, chosen.height, 6)
+    this.drawRoundedRect(chosen.x, chosen.y, chosen.width, chosen.height, 5)
     this.ctx.fillStyle = LABEL_BG
     this.ctx.fill()
     this.ctx.strokeStyle = LABEL_BORDER
-    this.ctx.lineWidth = 1
+    this.ctx.lineWidth = 0.8
     this.ctx.stroke()
 
     this.ctx.fillStyle = withAlpha(input.color, 0.95)

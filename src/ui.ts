@@ -57,6 +57,11 @@ export class UIController {
   private readonly presetButtons: HTMLButtonElement[]
   private readonly modeButtons: HTMLButtonElement[]
 
+  private readonly inlineDeltaZero: HTMLElement
+  private readonly heroEquation: HTMLElement
+  private readonly projectionBadge: HTMLElement
+  private readonly tightnessFormula: HTMLElement
+
   private readonly presetNote: HTMLElement
   private readonly tightnessSlider: HTMLInputElement
   private readonly tightnessValue: HTMLElement
@@ -103,6 +108,11 @@ export class UIController {
     if (this.modeButtons.length === 0) {
       throw new Error('Missing mode buttons')
     }
+
+    this.inlineDeltaZero = this.getElement('inline-delta-zero')
+    this.heroEquation = this.getElement('hero-equation')
+    this.projectionBadge = this.getElement('projection-badge')
+    this.tightnessFormula = this.getElement('tightness-formula')
 
     this.presetNote = this.getElement('preset-note')
     this.tightnessSlider = this.getElement<HTMLInputElement>('tightness-slider')
@@ -240,8 +250,8 @@ export class UIController {
   setDragActive(active: boolean): void {
     this.dragHint.classList.toggle('active', active)
     this.dragHint.textContent = active
-      ? 'Dragging Δ0: watch risk and correction cost change instantly.'
-      : 'Drag directly on the canvas or grab the Δ0 tip.'
+      ? 'Dragging raw patch: watch queue impact and correction cost update instantly.'
+      : 'Direct manipulation: drag anywhere or grab the raw tip.'
   }
 
   renderOutcome(frame: OutcomeFrameUi): void {
@@ -272,11 +282,7 @@ export class UIController {
     this.renderList(this.whyList, frame.whyItems, 'No rationale yet.')
     this.renderList(this.actionList, frame.actionItems, 'No action generated yet.')
 
-    this.equationSub.innerHTML = katex.renderToString(frame.mathSummaryTex, {
-      displayMode: true,
-      throwOnError: false,
-      output: 'html',
-    })
+    this.renderTex(this.equationSub, frame.mathSummaryTex, true)
 
     this.renderMathTerms(frame.mathTerms)
   }
@@ -312,7 +318,7 @@ export class UIController {
 
       const value = document.createElement('span')
       value.className = 'force-value'
-      value.textContent = `λ ${item.lambda.toFixed(3)}`
+      this.renderTex(value, String.raw`\lambda = ${item.lambda.toFixed(3)}`, false)
 
       button.append(labelWrap, value)
       return button
@@ -326,20 +332,12 @@ export class UIController {
   }
 
   private renderMathBase(): void {
-    this.equationMain.innerHTML = katex.renderToString(
-      String.raw`\Delta^\star = \Delta_0 + \sum_{k\in\mathcal{A}}\left(-\eta\,\lambda_k\,n_k\right)`,
-      {
-        displayMode: true,
-        throwOnError: false,
-        output: 'html',
-      },
-    )
-
-    this.equationSub.innerHTML = katex.renderToString(String.raw`\text{Interact to populate active correction terms.}`, {
-      displayMode: true,
-      throwOnError: false,
-      output: 'html',
-    })
+    this.renderTex(this.inlineDeltaZero, String.raw`\Delta_0`, false)
+    this.renderTex(this.heroEquation, String.raw`\Delta^\star=\Pi_{\mathcal{F}}(\Delta_0)`, true)
+    this.renderTex(this.projectionBadge, String.raw`\Delta^\star=\Pi_{\mathcal{F}}(\Delta_0)`, false)
+    this.renderTex(this.tightnessFormula, String.raw`\tau\uparrow \Rightarrow \varepsilon_k\downarrow`, false)
+    this.renderTex(this.equationMain, String.raw`\Delta^\star = \Delta_0 + \sum_{k\in\mathcal{A}}\left(-\eta\,\lambda_k\,n_k\right)`, true)
+    this.renderTex(this.equationSub, String.raw`\text{Interact to populate active correction terms.}`, true)
   }
 
   private renderMathTerms(terms: MathTermUi[]): void {
@@ -365,21 +363,13 @@ export class UIController {
 
       const lambda = document.createElement('p')
       lambda.className = 'math-term-lambda'
-      lambda.innerHTML = katex.renderToString(term.lambdaTex, {
-        displayMode: false,
-        throwOnError: false,
-        output: 'html',
-      })
+      this.renderTex(lambda, term.lambdaTex, false)
 
       head.append(label, lambda)
 
       const vector = document.createElement('p')
       vector.className = 'math-term-vector'
-      vector.innerHTML = katex.renderToString(term.vectorTex, {
-        displayMode: false,
-        throwOnError: false,
-        output: 'html',
-      })
+      this.renderTex(vector, term.vectorTex, false)
 
       card.append(head, vector)
       return card
@@ -396,6 +386,19 @@ export class UIController {
       return li
     })
     target.replaceChildren(...nodes)
+  }
+
+  private renderTex(target: HTMLElement, tex: string, displayMode: boolean): void {
+    try {
+      target.innerHTML = katex.renderToString(tex, {
+        displayMode,
+        throwOnError: false,
+        strict: 'ignore',
+        output: 'html',
+      })
+    } catch {
+      target.textContent = tex
+    }
   }
 
   private syncPresetButtons(): void {
