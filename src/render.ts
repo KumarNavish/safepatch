@@ -400,7 +400,11 @@ export class SceneRenderer {
       const isPrimary = input.primaryDiagnostic?.id === halfspace.id
       const isHighlighted = input.highlightedConstraintId === halfspace.id
 
-      if (input.mode === 'geometry' && input.primaryDiagnostic && !isPrimary && !isHighlighted) {
+      if (input.mode === 'geometry' && !isPrimary && !isHighlighted) {
+        return
+      }
+
+      if (input.mode === 'forces' && !isHighlighted) {
         return
       }
 
