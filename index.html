@@ -42,6 +42,21 @@
 
           <p id="drag-hint" class="drag-hint">Drag directly on the canvas or grab the Δ0 tip.</p>
 
+          <section class="impact-strip" aria-label="Immediate interaction impact">
+            <article class="impact-card">
+              <p class="impact-label">Correction distance</p>
+              <strong id="impact-correction" class="impact-value">--</strong>
+            </article>
+            <article class="impact-card">
+              <p class="impact-label">Risk drop</p>
+              <strong id="impact-risk" class="impact-value">--</strong>
+            </article>
+            <article class="impact-card">
+              <p class="impact-label">Primary blocker</p>
+              <strong id="impact-blocker" class="impact-value impact-blocker">--</strong>
+            </article>
+          </section>
+
           <section id="force-bars" class="force-bars" aria-label="Constraint correction strengths"></section>
         </section>
 
@@ -122,9 +137,11 @@
         </section>
 
         <section class="math-card">
-          <h3>Projection equation</h3>
+          <h3>Projection decomposition</h3>
           <div id="equation-main" class="equation"></div>
-          <p class="math-note">Forces view shows each active correction term and its λ strength.</p>
+          <div id="equation-sub" class="equation equation-sub"></div>
+          <div id="equation-terms" class="equation-terms"></div>
+          <p class="math-note">Each active λ term is a real correction vector shown in Forces mode.</p>
         </section>
       </details>
     </main>

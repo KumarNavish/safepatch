@@ -6,7 +6,7 @@ import { computeProjectedStep } from './qp'
 import type { ProjectionResult } from './qp'
 import { SceneRenderer } from './render'
 import { UIController } from './ui'
-import type { DetailFrameUi, ForceBarUi, OutcomeFrameUi, PresetId, SceneMode } from './ui'
+import type { DetailFrameUi, ForceBarUi, MathTermUi, OutcomeFrameUi, PresetId, SceneMode } from './ui'
 
 const ETA = 1
 const PROJECTION_TOLERANCE = 1e-6
@@ -109,6 +109,11 @@ interface Evaluation {
   queueRawPeak: number
   queueSafePeak: number
   retainedGain: number
+  correctionNorm: number
+  correctionNormRatio: number
+  queuePeakDelta: number
+  riskDropPct: number
+  dominantConstraintLabel: string | null
   decisionTone: 'ship' | 'hold'
   decisionTitle: string
   decisionDetail: string
@@ -230,10 +235,19 @@ function scenarioEvaluation(state: InteractiveState): Evaluation {
   const rawRisk = clampRange(Math.max(0, projection.maxViolationStep0) / maxBound, 0, 2)
   const safeRisk = clampRange(Math.max(0, projection.maxViolationProjected) / maxBound, 0, 2)
   const retainedGain = clampRange(projection.descentRetainedRatio, 0, 1.2)
+  const correctionVector = {
+    x: projection.step0.x - projection.projectedStep.x,
+    y: projection.step0.y - projection.projectedStep.y,
+  }
+  const correctionNorm = Math.hypot(correctionVector.x, correctionVector.y)
+  const rawNorm = Math.max(1e-6, Math.hypot(projection.step0.x, projection.step0.y))
+  const correctionNormRatio = clampRange(correctionNorm / rawNorm, 0, 2)
 
   const baseQueue = 190 + normalizedState.pressure * 320 + normalizedState.tightness * 38
   const queueRawPeak = Math.round(clampRange(baseQueue + rawRisk * 330 + (1 - retainedGain) * 35, 80, 3800))
   const queueSafePeak = Math.round(clampRange(baseQueue + safeRisk * 190 + (1 - retainedGain) * 60 - 46, 60, 3800))
+  const queuePeakDelta = queueRawPeak - queueSafePeak
+  const riskDropPct = clampRange(((rawRisk - safeRisk) / Math.max(rawRisk, 0.05)) * 100, -200, 100)
 
   let decisionTone: 'ship' | 'hold' = 'ship'
   let decisionTitle = 'Ship projected patch'
@@ -272,11 +286,20 @@ function scenarioEvaluation(state: InteractiveState): Evaluation {
     .map((id) => halfspaces.find((halfspace) => halfspace.id === id)?.label)
     .filter((value): value is string => typeof value === 'string')
 
+  const dominantConstraintId = projection.activeSetIds
+    .slice()
+    .sort((a, b) => (projection.lambdaById[b] ?? 0) - (projection.lambdaById[a] ?? 0))[0]
+
+  const dominantConstraintLabel = dominantConstraintId
+    ? halfspaces.find((halfspace) => halfspace.id === dominantConstraintId)?.label ?? dominantConstraintId
+    : null
+
   const whyItems: string[] = [
     `Raw checks passed: ${checksRawPassed}/${activeCheckCount}; projected checks passed: ${checksSafePassed}/${activeCheckCount}.`,
     activeLabels.length > 0
       ? `Active correction set: ${activeLabels.join(', ')}.`
       : 'No active correction force: raw patch is already inside all active checks.',
+    `Correction cost is ${Math.round(correctionNormRatio * 100)}% of raw patch magnitude.`,
     `Expected queue peak: ${queueRawPeak.toLocaleString()} -> ${queueSafePeak.toLocaleString()}; retained gain ${Math.round(
       retainedGain * 100,
     )}%.`,
@@ -286,12 +309,14 @@ function scenarioEvaluation(state: InteractiveState): Evaluation {
     decisionTone === 'ship'
       ? [
           'Ship projected patch through staged canary rollout.',
-          'Monitor active checks and queue for the first 15 minutes.',
+          'Monitor the dominant active check and queue peak for the first 15 minutes.',
           'Keep rollback hook armed if queue rises above threshold.',
         ]
       : [
           'Do not ship yet in this operating point.',
-          'Drag Δ0 toward the feasible region or reduce policy tightness.',
+          dominantConstraintLabel
+            ? `Drag Δ0 away from "${dominantConstraintLabel}" pressure until correction cost drops.`
+            : 'Drag Δ0 toward the feasible region or reduce policy tightness.',
           'Replay the teaching sequence to inspect the dominant correction force.',
         ]
 
@@ -318,6 +343,11 @@ function scenarioEvaluation(state: InteractiveState): Evaluation {
     queueRawPeak,
     queueSafePeak,
     retainedGain,
+    correctionNorm,
+    correctionNormRatio,
+    queuePeakDelta,
+    riskDropPct,
+    dominantConstraintLabel,
     decisionTone,
     decisionTitle,
     decisionDetail,
@@ -349,6 +379,24 @@ function buildForceBars(evaluation: Evaluation, visibleIds: Set<string>): ForceB
     }))
 }
 
+function buildMathTerms(evaluation: Evaluation): MathTermUi[] {
+  return evaluation.projection.diagnostics
+    .filter((diagnostic) => diagnostic.active && diagnostic.lambda > PROJECTION_TOLERANCE)
+    .sort((a, b) => b.lambda - a.lambda)
+    .slice(0, 5)
+    .map((diagnostic) => {
+      const correction = evaluation.projection.correctionById[diagnostic.id] ?? vec(0, 0)
+      return {
+        id: diagnostic.id,
+        label: diagnostic.label,
+        lambdaText: `λ ${diagnostic.lambda.toFixed(3)}`,
+        vectorText: `-η λ n = (${correction.x.toFixed(3)}, ${correction.y.toFixed(3)})`,
+        color: forceColor(diagnostic.id),
+        active: evaluation.projection.activeSetIds.includes(diagnostic.id),
+      }
+    })
+}
+
 function buildOutcomeFrame(
   evaluation: Evaluation,
   mode: SceneMode,
@@ -377,7 +425,9 @@ function buildOutcomeFrame(
   } else if (teachingProgress < 1) {
     stageCaption = 'Step 4: Corrected patch Δ* lands inside the feasible region.'
   } else if (dragging) {
-    stageCaption = 'Dragging Δ0: projection updates continuously as you move the raw patch.'
+    stageCaption = `Dragging Δ0: queue delta ${evaluation.queuePeakDelta >= 0 ? '-' : '+'}${Math.abs(
+      evaluation.queuePeakDelta,
+    ).toLocaleString()} and correction ${evaluation.correctionNorm.toFixed(3)}.`
   } else if (dominantLabel && dominantLambda > PROJECTION_TOLERANCE) {
     stageCaption = `Dominant correction: ${dominantLabel} (λ=${dominantLambda.toFixed(3)}).`
   } else {
@@ -395,16 +445,27 @@ function buildOutcomeFrame(
     retainedText: `${Math.round(evaluation.retainedGain * 100)}%`,
     readinessText: `Readiness: ${evaluation.readiness}/100`,
     stageCaption,
+    impactCorrectionText: `${evaluation.correctionNorm.toFixed(3)} (${Math.round(evaluation.correctionNormRatio * 100)}%)`,
+    impactRiskText: `${evaluation.riskDropPct >= 0 ? '+' : ''}${Math.round(evaluation.riskDropPct)}%`,
+    impactBlockerText: evaluation.dominantConstraintLabel ?? 'No active blocker',
   }
 }
 
 function buildDetailFrame(evaluation: Evaluation): DetailFrameUi {
   const presetNote = PRESETS[evaluation.state.presetId].note
+  const mathSummaryTex = String.raw`\Delta_0=(${evaluation.projection.step0.x.toFixed(3)}, ${evaluation.projection.step0.y.toFixed(
+    3,
+  )}),\quad \Delta^\star=(${evaluation.projection.projectedStep.x.toFixed(3)}, ${evaluation.projection.projectedStep.y.toFixed(
+    3,
+  )}),\quad \|\Delta^\star-\Delta_0\|_2=${evaluation.correctionNorm.toFixed(3)}`
+
   return {
     presetNote,
     whyItems: evaluation.whyItems,
     actionItems: evaluation.actionItems,
     memoText: evaluation.memoText,
+    mathSummaryTex,
+    mathTerms: buildMathTerms(evaluation),
   }
 }
 
@@ -492,9 +553,13 @@ function buildDecisionPayload(evaluation: Evaluation): Record<string, unknown> {
       checks_total: evaluation.activeCheckCount,
       queue_peak_raw: evaluation.queueRawPeak,
       queue_peak_safe: evaluation.queueSafePeak,
+      queue_peak_delta: evaluation.queuePeakDelta,
       retained_gain_ratio: Number(evaluation.retainedGain.toFixed(4)),
+      correction_norm: Number(evaluation.correctionNorm.toFixed(4)),
+      correction_norm_ratio: Number(evaluation.correctionNormRatio.toFixed(4)),
       raw_risk_ratio: Number(evaluation.rawRisk.toFixed(4)),
       safe_risk_ratio: Number(evaluation.safeRisk.toFixed(4)),
+      risk_drop_pct: Number(evaluation.riskDropPct.toFixed(3)),
     },
     active_constraints: evaluation.projection.activeSetIds,
     lambdas: evaluation.projection.lambdaById,
@@ -523,6 +588,8 @@ function start(): void {
     targetEvaluation.projection.activeSetIds.filter((id) => (targetEvaluation.projection.lambdaById[id] ?? 0) > PROJECTION_TOLERANCE),
   )
   let highlightedConstraintId: string | null = [...visibleCorrectionIds][0] ?? null
+  let rawTrail: Vec2[] = [{ ...targetEvaluation.projection.step0 }]
+  let safeTrail: Vec2[] = [{ ...targetEvaluation.projection.projectedStep }]
 
   let teachingStart = performance.now()
   let teachingActive = true
@@ -584,6 +651,8 @@ function start(): void {
     targetState = merged
     targetEvaluation = scenarioEvaluation(targetState)
     syncVisibleCorrections(targetEvaluation)
+    rawTrail = [...rawTrail.slice(-30), { ...targetEvaluation.projection.step0 }]
+    safeTrail = [...safeTrail.slice(-30), { ...targetEvaluation.projection.projectedStep }]
 
     tweenFrom = current
     tweenTo = cloneState(targetState)
@@ -668,6 +737,8 @@ function start(): void {
       highlightedConstraintId,
       visibleCorrectionIds: [...visibleCorrectionIds],
       dragActive: dragging,
+      rawTrail,
+      safeTrail,
     })
 
     ui.renderOutcome(buildOutcomeFrame(displayedEvaluation, displayedState.mode, teachingProgress, dragging))
@@ -694,6 +765,8 @@ function start(): void {
   ui.onReplay(() => {
     teachingActive = true
     teachingStart = performance.now()
+    rawTrail = [{ ...targetEvaluation.projection.step0 }]
+    safeTrail = [{ ...targetEvaluation.projection.projectedStep }]
   })
 
   ui.onForceToggle((constraintId) => {

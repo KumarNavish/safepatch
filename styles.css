@@ -172,6 +172,42 @@ h1 {
   color: #1e5ddb;
 }
 
+.impact-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.impact-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  padding: 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.impact-label {
+  margin: 0;
+  color: #5a7393;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.54rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.impact-value {
+  color: #1f4f9d;
+  font-family: 'Newsreader', serif;
+  font-size: 1rem;
+  line-height: 1.05;
+}
+
+.impact-blocker {
+  color: #9a5f2a;
+  font-size: 0.86rem;
+}
+
 .force-bars {
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -533,6 +569,58 @@ input[type='range'] {
   overflow-x: auto;
 }
 
+.equation-sub {
+  margin-top: 8px;
+}
+
+.equation-terms {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.math-term {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.math-term.inactive {
+  opacity: 0.58;
+}
+
+.math-term-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.math-term-label {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.71rem;
+  font-weight: 600;
+}
+
+.math-term-lambda {
+  margin: 0;
+  color: #1f4f9d;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+}
+
+.math-term-vector {
+  margin: 0;
+  color: var(--ink-soft);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.63rem;
+}
+
 .math-note {
   margin: 7px 0 0;
   color: #607991;
@@ -550,6 +638,10 @@ input[type='range'] {
   }
 
   .outcome-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .impact-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -593,6 +685,10 @@ input[type='range'] {
   }
 
   .outcome-strip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .impact-strip {
     grid-template-columns: minmax(0, 1fr);
   }
 

@@ -21,6 +21,15 @@ export interface ForceBarUi {
   isVisible: boolean
 }
 
+export interface MathTermUi {
+  id: string
+  label: string
+  lambdaText: string
+  vectorText: string
+  color: string
+  active: boolean
+}
+
 export interface OutcomeFrameUi {
   decisionTone: 'ship' | 'hold'
   decisionTitle: string
@@ -30,6 +39,9 @@ export interface OutcomeFrameUi {
   retainedText: string
   readinessText: string
   stageCaption: string
+  impactCorrectionText: string
+  impactRiskText: string
+  impactBlockerText: string
 }
 
 export interface DetailFrameUi {
@@ -37,6 +49,8 @@ export interface DetailFrameUi {
   whyItems: string[]
   actionItems: string[]
   memoText: string
+  mathSummaryTex: string
+  mathTerms: MathTermUi[]
 }
 
 export class UIController {
@@ -60,11 +74,19 @@ export class UIController {
   private readonly readinessNote: HTMLElement
   private readonly stageCaption: HTMLElement
 
+  private readonly impactCorrection: HTMLElement
+  private readonly impactRisk: HTMLElement
+  private readonly impactBlocker: HTMLElement
+
   private readonly whyList: HTMLUListElement
   private readonly actionList: HTMLUListElement
   private readonly memoText: HTMLElement
   private readonly copyMemoButton: HTMLButtonElement
   private readonly exportButton: HTMLButtonElement
+
+  private readonly equationMain: HTMLElement
+  private readonly equationSub: HTMLElement
+  private readonly equationTerms: HTMLElement
 
   private selectedPresetId: PresetId
   private selectedPressure: number
@@ -99,11 +121,19 @@ export class UIController {
     this.readinessNote = this.getElement('readiness-note')
     this.stageCaption = this.getElement('stage-caption')
 
+    this.impactCorrection = this.getElement('impact-correction')
+    this.impactRisk = this.getElement('impact-risk')
+    this.impactBlocker = this.getElement('impact-blocker')
+
     this.whyList = this.getElement<HTMLUListElement>('why-list')
     this.actionList = this.getElement<HTMLUListElement>('action-list')
     this.memoText = this.getElement('memo-text')
     this.copyMemoButton = this.getElement<HTMLButtonElement>('copy-memo-button')
     this.exportButton = this.getElement<HTMLButtonElement>('export-button')
+
+    this.equationMain = this.getElement('equation-main')
+    this.equationSub = this.getElement('equation-sub')
+    this.equationTerms = this.getElement('equation-terms')
 
     const activePreset = this.presetButtons.find((button) => button.classList.contains('active')) ?? this.presetButtons[0]
     this.selectedPresetId = this.parsePresetId(activePreset.dataset.preset)
@@ -117,7 +147,7 @@ export class UIController {
     this.syncPresetButtons()
     this.syncTightness()
     this.syncModeButtons()
-    this.renderMath()
+    this.renderMathBase()
   }
 
   onPresetChange(callback: (controls: ControlValues) => void): void {
@@ -210,7 +240,7 @@ export class UIController {
   setDragActive(active: boolean): void {
     this.dragHint.classList.toggle('active', active)
     this.dragHint.textContent = active
-      ? 'Dragging Δ0: watch Δ* and active checks respond.'
+      ? 'Dragging Δ0: watch risk and correction cost change instantly.'
       : 'Drag directly on the canvas or grab the Δ0 tip.'
   }
 
@@ -229,13 +259,26 @@ export class UIController {
     this.retainedValue.textContent = frame.retainedText
     this.readinessNote.textContent = frame.readinessText
     this.stageCaption.textContent = frame.stageCaption
+
+    this.impactCorrection.textContent = frame.impactCorrectionText
+    this.impactRisk.textContent = frame.impactRiskText
+    this.impactBlocker.textContent = frame.impactBlockerText
   }
 
   renderDetails(frame: DetailFrameUi): void {
     this.presetNote.textContent = frame.presetNote
     this.memoText.textContent = frame.memoText
+
     this.renderList(this.whyList, frame.whyItems, 'No rationale yet.')
     this.renderList(this.actionList, frame.actionItems, 'No action generated yet.')
+
+    this.equationSub.innerHTML = katex.renderToString(frame.mathSummaryTex, {
+      displayMode: true,
+      throwOnError: false,
+      output: 'html',
+    })
+
+    this.renderMathTerms(frame.mathTerms)
   }
 
   renderForceBars(items: ForceBarUi[]): void {
@@ -282,6 +325,61 @@ export class UIController {
     this.forceBars.classList.toggle('hidden', !show)
   }
 
+  private renderMathBase(): void {
+    this.equationMain.innerHTML = katex.renderToString(
+      String.raw`\Delta^\star = \Delta_0 + \sum_{k\in\mathcal{A}}\left(-\eta\,\lambda_k\,n_k\right)`,
+      {
+        displayMode: true,
+        throwOnError: false,
+        output: 'html',
+      },
+    )
+
+    this.equationSub.innerHTML = katex.renderToString(String.raw`\text{Interact to populate active correction terms.}`, {
+      displayMode: true,
+      throwOnError: false,
+      output: 'html',
+    })
+  }
+
+  private renderMathTerms(terms: MathTermUi[]): void {
+    if (terms.length === 0) {
+      const empty = document.createElement('p')
+      empty.className = 'math-note'
+      empty.textContent = 'No active constraints. Raw patch is already feasible.'
+      this.equationTerms.replaceChildren(empty)
+      return
+    }
+
+    const nodes = terms.map((term) => {
+      const card = document.createElement('article')
+      card.className = `math-term${term.active ? '' : ' inactive'}`
+      card.style.borderLeftColor = term.color
+
+      const head = document.createElement('div')
+      head.className = 'math-term-head'
+
+      const label = document.createElement('p')
+      label.className = 'math-term-label'
+      label.textContent = term.label
+
+      const lambda = document.createElement('p')
+      lambda.className = 'math-term-lambda'
+      lambda.textContent = term.lambdaText
+
+      head.append(label, lambda)
+
+      const vector = document.createElement('p')
+      vector.className = 'math-term-vector'
+      vector.textContent = term.vectorText
+
+      card.append(head, vector)
+      return card
+    })
+
+    this.equationTerms.replaceChildren(...nodes)
+  }
+
   private renderList(target: HTMLUListElement, items: string[], fallback: string): void {
     const rows = items.length > 0 ? items.slice(0, 4) : [fallback]
     const nodes = rows.map((row) => {
@@ -290,18 +388,6 @@ export class UIController {
       return li
     })
     target.replaceChildren(...nodes)
-  }
-
-  private renderMath(): void {
-    const equationNode = this.getElement('equation-main')
-    equationNode.innerHTML = katex.renderToString(
-      String.raw`\Delta^\star = \Delta_0 + \sum_{k\in\mathcal{A}}\left(-\eta\,\lambda_k\,n_k\right),\quad n_k^\top\Delta^\star\le\varepsilon_k`,
-      {
-        displayMode: true,
-        throwOnError: false,
-        output: 'html',
-      },
-    )
   }
 
   private syncPresetButtons(): void {

@@ -13,6 +13,8 @@ export interface SceneRenderInput {
   highlightedConstraintId: string | null
   visibleCorrectionIds: string[]
   dragActive: boolean
+  rawTrail: Vec2[]
+  safeTrail: Vec2[]
 }
 
 interface Rect {
@@ -194,6 +196,9 @@ export class SceneRenderer {
       hitBeat: beats.hit,
     })
 
+    this.drawTrails(mapper, input.rawTrail, RAW_COLOR)
+    this.drawTrails(mapper, input.safeTrail, SAFE_COLOR)
+
     if (input.mode === 'geometry') {
       this.drawGeometryMode({
         projection: input.projection,
@@ -221,6 +226,26 @@ export class SceneRenderer {
       frame.x + 10,
       frame.y + frame.height - 8,
     )
+  }
+
+  private drawTrails(mapper: Mapper, points: Vec2[], color: string): void {
+    if (points.length < 2) {
+      return
+    }
+
+    const start = Math.max(0, points.length - 18)
+    for (let i = start + 1; i < points.length; i += 1) {
+      const alpha = (i - start) / Math.max(1, points.length - start)
+      const from = mapper.worldToCanvas(points[i - 1])
+      const to = mapper.worldToCanvas(points[i])
+      this.ctx.beginPath()
+      this.ctx.moveTo(from.x, from.y)
+      this.ctx.lineTo(to.x, to.y)
+      this.ctx.strokeStyle = withAlpha(color, 0.06 + alpha * 0.18)
+      this.ctx.lineWidth = 1.1 + alpha * 1.1
+      this.ctx.lineCap = 'round'
+      this.ctx.stroke()
+    }
   }
 
   private resolveTeachingBeats(progress: number): TeachingBeats {
