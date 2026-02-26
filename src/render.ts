@@ -69,11 +69,6 @@ function easeOutBack(value: number): number {
   return 1 + c3 * (t - 1) ** 3 + c1 * (t - 1) ** 2
 }
 
-function easeInOutSine(value: number): number {
-  const t = clamp(value)
-  return -(Math.cos(Math.PI * t) - 1) / 2
-}
-
 function phaseWindow(progress: number, start: number, end: number): number {
   if (end <= start) {
     return progress >= end ? 1 : 0
@@ -92,10 +87,6 @@ function withAlpha(hex: string, alpha: number): string {
   const g = (parsed >> 8) & 255
   const b = parsed & 255
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
-}
-
-function vectorLength(vector: Vec2): number {
-  return Math.hypot(vector.x, vector.y)
 }
 
 function boxesOverlap(a: LabelBox, b: LabelBox): boolean {
@@ -204,7 +195,6 @@ export class SceneRenderer {
       highlightedConstraintId: input.highlightedConstraintId,
       primaryDiagnostic,
       hitBeat: beats.hit,
-      clockMs: input.clockMs,
     })
 
     if (input.dragActive && input.mode === 'geometry') {
@@ -221,7 +211,6 @@ export class SceneRenderer {
         teachingMode,
         primaryDiagnostic,
         pulse: 0.5 + 0.5 * Math.sin(input.clockMs * 0.0052),
-        clockMs: input.clockMs,
       })
     } else {
       this.drawForcesMode({
@@ -229,7 +218,6 @@ export class SceneRenderer {
         mapper,
         visibleSet,
         highlightedConstraintId: input.highlightedConstraintId,
-        clockMs: input.clockMs,
       })
     }
 
@@ -335,7 +323,7 @@ export class SceneRenderer {
           ]
         : [
             { label: 'Proposed patch', color: RAW_COLOR },
-            { label: 'Policy corrections', color: PUSH_COLOR },
+            { label: 'Total policy correction', color: PUSH_COLOR },
             { label: 'Certified patch', color: SAFE_COLOR },
           ]
 
@@ -397,7 +385,6 @@ export class SceneRenderer {
     highlightedConstraintId: string | null
     primaryDiagnostic: ConstraintDiagnostic | null
     hitBeat: number
-    clockMs: number
   }): void {
     const span = input.mapper.worldRadius * 1.85
 
@@ -441,18 +428,12 @@ export class SceneRenderer {
         width = 2.1
       }
 
-      this.ctx.save()
-      if (isPrimary && input.mode === 'geometry') {
-        this.ctx.setLineDash([8, 5])
-        this.ctx.lineDashOffset = -input.clockMs * 0.025
-      }
       this.ctx.beginPath()
       this.ctx.moveTo(p0.x, p0.y)
       this.ctx.lineTo(p1.x, p1.y)
       this.ctx.strokeStyle = stroke
       this.ctx.lineWidth = width
       this.ctx.stroke()
-      this.ctx.restore()
 
       if (input.mode === 'forces' && input.highlightedConstraintId === halfspace.id) {
         const labelAnchor = input.mapper.worldToCanvas(add(anchor, scale(normal, 0.06 * input.mapper.worldRadius)))
@@ -475,7 +456,6 @@ export class SceneRenderer {
     teachingMode: boolean
     primaryDiagnostic: ConstraintDiagnostic | null
     pulse: number
-    clockMs: number
   }): void {
     const originWorld = vec(0, 0)
     const rawWorld = input.projection.step0
@@ -488,7 +468,6 @@ export class SceneRenderer {
     this.drawArrow(origin, rawVisible, RAW_COLOR, 2.5, false, true)
     this.drawNode(origin, '#7292b8', 3.8)
     this.drawNode(rawVisible, RAW_COLOR, 4)
-    this.drawTravelDot(origin, rawVisible, (input.clockMs * 0.0013) % 1, RAW_COLOR, 3)
 
     let hitCanvas: Vec2 | null = null
 
@@ -516,24 +495,11 @@ export class SceneRenderer {
         input.mapper.worldToCanvas(rawWorld),
         input.mapper.worldToCanvas(correctionVisible),
         PUSH_COLOR,
-        input.teachingMode ? 1.9 : 1.45,
-        true,
+        input.teachingMode ? 1.9 : 1.5,
+        false,
         input.teachingMode,
       )
-      this.drawTravelDot(
-        input.mapper.worldToCanvas(rawWorld),
-        input.mapper.worldToCanvas(correctionVisible),
-        (input.clockMs * 0.0016) % 1,
-        PUSH_COLOR,
-        2.8,
-      )
 
-      if (hitCanvas && input.teachingMode) {
-        const normalTip = input.mapper.worldToCanvas(
-          add(input.mapper.canvasToWorld(hitCanvas), scale(normalize(input.primaryDiagnostic?.normal ?? vec(0, 0)), 0.16)),
-        )
-        this.drawArrow(hitCanvas, normalTip, PUSH_COLOR, 1.2, true, false)
-      }
     }
 
     if (input.beats.safe > 0.02) {
@@ -541,9 +507,8 @@ export class SceneRenderer {
       const safeVisible = input.mapper.worldToCanvas(safeVisibleWorld)
       this.drawArrow(origin, safeVisible, SAFE_COLOR, 2.6, false, true)
       this.drawNode(safeVisible, SAFE_COLOR, 4)
-      this.drawTravelDot(origin, safeVisible, (input.clockMs * 0.0015 + 0.2) % 1, SAFE_COLOR, 3.1)
       if (input.teachingMode && input.beats.safe > 0.8) {
-        this.drawApprovalBadge(safeVisible, easeInOutSine((input.beats.safe - 0.8) / 0.2))
+        this.drawApprovalBadge(safeVisible, (input.beats.safe - 0.8) / 0.2)
       }
     }
 
@@ -569,7 +534,6 @@ export class SceneRenderer {
     mapper: Mapper
     visibleSet: Set<string>
     highlightedConstraintId: string | null
-    clockMs: number
   }): void {
     const origin = input.mapper.worldToCanvas(vec(0, 0))
     const rawTip = input.mapper.worldToCanvas(input.projection.step0)
@@ -578,63 +542,24 @@ export class SceneRenderer {
     this.drawArrow(origin, rawTip, RAW_COLOR, 2.3, false, true)
     this.drawNode(origin, '#7292b8', 3.8)
     this.drawNode(rawTip, RAW_COLOR, 4)
-    this.drawTravelDot(origin, rawTip, (input.clockMs * 0.0012) % 1, RAW_COLOR, 3)
-
-    const activeIds = input.projection.activeSetIds
-      .slice()
-      .sort((a, b) => (input.projection.lambdaById[b] ?? 0) - (input.projection.lambdaById[a] ?? 0))
-
-    let cursor = input.projection.step0
-    let activeIndex = 0
-
-    for (const id of activeIds) {
-      const lambda = input.projection.lambdaById[id] ?? 0
-      const correction = input.projection.correctionById[id] ?? vec(0, 0)
-      if (lambda <= 1e-6 || vectorLength(correction) <= 1e-4) {
-        continue
-      }
-
-      const next = add(cursor, correction)
-
-      if (input.visibleSet.has(id)) {
-        const color = this.colorForConstraint(id)
-        const isFocused = input.highlightedConstraintId === id
-
-        this.drawArrow(
-          input.mapper.worldToCanvas(cursor),
-          input.mapper.worldToCanvas(next),
-          withAlpha(color, isFocused ? 1 : 0.86),
-          isFocused ? 2.2 : 1.7,
-          !isFocused,
-          true,
-        )
-        this.drawTravelDot(
-          input.mapper.worldToCanvas(cursor),
-          input.mapper.worldToCanvas(next),
-          (input.clockMs * 0.0014 + activeIndex * 0.17) % 1,
-          color,
-          isFocused ? 3 : 2.4,
-        )
-
-        if (isFocused) {
-          this.drawLabel({
-            anchor: input.mapper.worldToCanvas(lerp(cursor, next, 0.5)),
-            text: `policy correction (${lambda.toFixed(3)})`,
-            color,
-            preferredDx: 8,
-            preferredDy: -20,
-          })
-        }
-      }
-
-      cursor = next
-      activeIndex += 1
-    }
-
+    this.drawArrow(rawTip, safeTip, PUSH_COLOR, 2, false, true)
     this.drawArrow(origin, safeTip, SAFE_COLOR, 2.6, false, true)
-    this.drawArrow(rawTip, safeTip, withAlpha(SAFE_COLOR, 0.42), 1.3, true, false)
     this.drawNode(safeTip, SAFE_COLOR, 4)
-    this.drawTravelDot(origin, safeTip, (input.clockMs * 0.0015 + 0.3) % 1, SAFE_COLOR, 3.1)
+
+    const selectedId = input.highlightedConstraintId
+    if (selectedId && input.visibleSet.has(selectedId)) {
+      const lambda = input.projection.lambdaById[selectedId] ?? 0
+      const color = this.colorForConstraint(selectedId)
+      if (lambda > 1e-6) {
+        this.drawLabel({
+          anchor: lerp(rawTip, safeTip, 0.5),
+          text: `selected policy pressure ${lambda.toFixed(3)}`,
+          color,
+          preferredDx: 8,
+          preferredDy: -20,
+        })
+      }
+    }
 
     this.drawLabel({
       anchor: rawTip,
@@ -651,24 +576,6 @@ export class SceneRenderer {
       preferredDx: 10,
       preferredDy: 8,
     })
-  }
-
-  private drawTravelDot(from: Vec2, to: Vec2, progress: number, color: string, radius: number): void {
-    const distance = Math.hypot(to.x - from.x, to.y - from.y)
-    if (distance < 4) {
-      return
-    }
-
-    const point = lerp(from, to, clamp(progress))
-    this.ctx.beginPath()
-    this.ctx.arc(point.x, point.y, radius + 2.2, 0, Math.PI * 2)
-    this.ctx.fillStyle = withAlpha(color, 0.18)
-    this.ctx.fill()
-
-    this.ctx.beginPath()
-    this.ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
-    this.ctx.fillStyle = withAlpha(color, 0.92)
-    this.ctx.fill()
   }
 
   private drawImpactBurst(center: Vec2, hitBeat: number, pulse: number, color: string): void {

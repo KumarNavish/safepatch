@@ -302,7 +302,7 @@ export class UIController {
 
       const meta = document.createElement('span')
       meta.className = 'force-meta'
-      meta.textContent = item.isVisible ? 'Visible in stage' : 'Hidden in stage'
+      meta.textContent = item.isVisible ? 'Selected policy' : 'Click to inspect'
 
       labelWrap.append(name, meta)
 

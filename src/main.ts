@@ -432,7 +432,7 @@ function buildOutcomeFrame(
 
   let stageCaption: string
   if (mode === 'forces') {
-    stageCaption = 'Policy Pressure view: each bar shows how strongly a policy pushes back on the proposal.'
+    stageCaption = 'Policy Pressure view: pick one policy bar to inspect what is constraining this release.'
   } else if (teachingProgress < 0.28) {
     stageCaption = 'Step 1: propose a patch direction.'
   } else if (teachingProgress < 0.46) {
@@ -452,7 +452,7 @@ function buildOutcomeFrame(
   } else if (dominantLabel && dominantLambda > PROJECTION_TOLERANCE) {
     stageCaption = `Main blocker right now: ${dominantLabel} (pressure ${dominantLambda.toFixed(3)}).`
   } else {
-    stageCaption = 'Proposal is already ship-safe. No policy correction needed.'
+    stageCaption = 'Red is proposed, blue is certified, amber is the safety correction.'
   }
 
   return {
@@ -473,6 +473,13 @@ function buildOutcomeFrame(
         : `${Math.abs(evaluation.queuePeakDelta).toLocaleString()} added`,
     impactBlockerText: evaluation.dominantConstraintLabel ?? 'No blocking policy',
   }
+}
+
+function dominantConstraintId(evaluation: Evaluation): string | null {
+  const ranked = evaluation.projection.activeSetIds
+    .filter((id) => (evaluation.projection.lambdaById[id] ?? 0) > PROJECTION_TOLERANCE)
+    .sort((a, b) => (evaluation.projection.lambdaById[b] ?? 0) - (evaluation.projection.lambdaById[a] ?? 0))
+  return ranked[0] ?? null
 }
 
 function buildDetailFrame(evaluation: Evaluation): DetailFrameUi {
@@ -609,10 +616,8 @@ function start(): void {
   let tweenDurationMs = UPDATE_ANIMATION_MS
 
   let targetEvaluation = scenarioEvaluation(targetState)
-  const visibleCorrectionIds = new Set<string>(
-    targetEvaluation.projection.activeSetIds.filter((id) => (targetEvaluation.projection.lambdaById[id] ?? 0) > PROJECTION_TOLERANCE),
-  )
-  let highlightedConstraintId: string | null = [...visibleCorrectionIds][0] ?? null
+  let highlightedConstraintId: string | null = dominantConstraintId(targetEvaluation)
+  const visibleCorrectionIds = new Set<string>(highlightedConstraintId ? [highlightedConstraintId] : [])
   let rawTrail: Vec2[] = [{ ...targetEvaluation.projection.step0 }]
   let safeTrail: Vec2[] = [{ ...targetEvaluation.projection.projectedStep }]
 
@@ -632,27 +637,14 @@ function start(): void {
     const activeIds = evaluation.projection.activeSetIds.filter(
       (id) => (evaluation.projection.lambdaById[id] ?? 0) > PROJECTION_TOLERANCE,
     )
-
     const activeSet = new Set(activeIds)
+    const fallback = dominantConstraintId(evaluation)
+    const nextHighlighted = highlightedConstraintId && activeSet.has(highlightedConstraintId) ? highlightedConstraintId : fallback
 
-    for (const id of Array.from(visibleCorrectionIds)) {
-      if (!activeSet.has(id)) {
-        visibleCorrectionIds.delete(id)
-      }
-    }
-
-    for (const id of activeIds) {
-      if (!visibleCorrectionIds.has(id)) {
-        visibleCorrectionIds.add(id)
-      }
-    }
-
-    if (highlightedConstraintId && !visibleCorrectionIds.has(highlightedConstraintId)) {
-      highlightedConstraintId = null
-    }
-
-    if (!highlightedConstraintId) {
-      highlightedConstraintId = activeIds[0] ?? null
+    highlightedConstraintId = nextHighlighted
+    visibleCorrectionIds.clear()
+    if (nextHighlighted) {
+      visibleCorrectionIds.add(nextHighlighted)
     }
   }
 
@@ -810,21 +802,9 @@ function start(): void {
   })
 
   ui.onForceToggle((constraintId) => {
-    if (visibleCorrectionIds.has(constraintId)) {
-      visibleCorrectionIds.delete(constraintId)
-      if (highlightedConstraintId === constraintId) {
-        highlightedConstraintId = null
-      }
-    } else {
-      visibleCorrectionIds.add(constraintId)
-      highlightedConstraintId = constraintId
-    }
-
-    const visibleList = Array.from(visibleCorrectionIds)
-    if (!highlightedConstraintId && visibleList.length > 0) {
-      highlightedConstraintId = visibleList[visibleList.length - 1]
-    }
-
+    highlightedConstraintId = constraintId
+    visibleCorrectionIds.clear()
+    visibleCorrectionIds.add(constraintId)
     ui.renderForceBars(buildForceBars(targetEvaluation, visibleCorrectionIds))
   })
 
