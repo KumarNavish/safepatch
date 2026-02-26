@@ -34,27 +34,17 @@ export interface OutcomeFrameUi {
   decisionTone: 'ship' | 'hold'
   decisionTitle: string
   decisionDetail: string
-  checksText: string
-  queueText: string
-  retainedText: string
   readinessText: string
+  nowTitle: string
+  nowBody: string
+  nowReason: string
+  checksText: string
+  incidentText: string
+  retainedText: string
+  impactLine: string
   stageCaption: string
-  guideStep: string
-  guideTitle: string
-  guideResult: string
-  guideMetric: string
-  storyProgress: number
-  storyStep: number
-  storyTitle: string
-  storyCause: string
-  storyEffect: string
-  storyNodeLines: [string, string, string, string]
-  valueTitle: string
-  valueMetric: string
-  valueNote: string
-  impactCorrectionText: string
-  impactRiskText: string
-  impactBlockerText: string
+  pipelineStep: number
+  pipelineLines: [string, string, string, string]
 }
 
 export interface DetailFrameUi {
@@ -69,42 +59,34 @@ export interface DetailFrameUi {
 export class UIController {
   private readonly presetButtons: HTMLButtonElement[]
   private readonly modeButtons: HTMLButtonElement[]
-  private readonly sidebar: HTMLElement
-  private readonly guideStep: HTMLElement
-  private readonly guideTitle: HTMLElement
-  private readonly guideResult: HTMLElement
-  private readonly guideMetric: HTMLElement
+
+  private readonly stageHint: HTMLElement
+  private readonly stageCaption: HTMLElement
+
+  private readonly nowTitle: HTMLElement
+  private readonly nowBody: HTMLElement
+  private readonly nowReason: HTMLElement
+
+  private readonly decisionCard: HTMLElement
+  private readonly decisionPill: HTMLElement
+  private readonly decisionTitle: HTMLElement
+  private readonly decisionDetail: HTMLElement
+  private readonly readinessNote: HTMLElement
+
+  private readonly checksValue: HTMLElement
+  private readonly incidentValue: HTMLElement
+  private readonly retainedValue: HTMLElement
+
+  private readonly pipelineCard: HTMLElement
+  private readonly pipelineSteps: HTMLElement[]
+  private readonly pipelineLines: HTMLElement[]
+  private readonly impactLine: HTMLElement
 
   private readonly presetNote: HTMLElement
   private readonly tightnessSlider: HTMLInputElement
   private readonly tightnessValue: HTMLElement
   private readonly replayButton: HTMLButtonElement
   private readonly forceBars: HTMLElement
-  private readonly dragHint: HTMLElement
-
-  private readonly decisionPanel: HTMLElement
-  private readonly decisionPill: HTMLElement
-  private readonly decisionTitle: HTMLElement
-  private readonly decisionDetail: HTMLElement
-  private readonly checksPassed: HTMLElement
-  private readonly queuePeak: HTMLElement
-  private readonly retainedValue: HTMLElement
-  private readonly readinessNote: HTMLElement
-  private readonly stageCaption: HTMLElement
-
-  private readonly impactCorrection: HTMLElement
-  private readonly impactRisk: HTMLElement
-  private readonly impactBlocker: HTMLElement
-
-  private readonly storyCard: HTMLElement
-  private readonly storyNodes: HTMLElement[]
-  private readonly storyNodeLines: HTMLElement[]
-  private readonly storyTitle: HTMLElement
-  private readonly storyCause: HTMLElement
-  private readonly storyEffect: HTMLElement
-  private readonly valueTitle: HTMLElement
-  private readonly valueMetric: HTMLElement
-  private readonly valueNote: HTMLElement
 
   private readonly whyList: HTMLUListElement
   private readonly actionList: HTMLUListElement
@@ -132,46 +114,38 @@ export class UIController {
       throw new Error('Missing mode buttons')
     }
 
-    this.sidebar = this.getElement('sidebar')
-    this.guideStep = this.getElement('guide-step')
-    this.guideTitle = this.getElement('guide-title')
-    this.guideResult = this.getElement('guide-result')
-    this.guideMetric = this.getElement('guide-metric')
+    this.stageHint = this.getElement('stage-hint')
+    this.stageCaption = this.getElement('stage-caption')
+
+    this.nowTitle = this.getElement('now-title')
+    this.nowBody = this.getElement('now-body')
+    this.nowReason = this.getElement('now-reason')
+
+    this.decisionCard = this.getElement('decision-card')
+    this.decisionPill = this.getElement('decision-pill')
+    this.decisionTitle = this.getElement('decision-title')
+    this.decisionDetail = this.getElement('decision-detail')
+    this.readinessNote = this.getElement('readiness-note')
+
+    this.checksValue = this.getElement('checks-value')
+    this.incidentValue = this.getElement('incident-value')
+    this.retainedValue = this.getElement('retained-value')
+
+    this.pipelineCard = this.getElement('pipeline-card')
+    this.pipelineSteps = Array.from(document.querySelectorAll<HTMLElement>('.pipe-step'))
+    this.pipelineLines = [
+      this.getElement('pipe-line-0'),
+      this.getElement('pipe-line-1'),
+      this.getElement('pipe-line-2'),
+      this.getElement('pipe-line-3'),
+    ]
+    this.impactLine = this.getElement('impact-line')
+
     this.presetNote = this.getElement('preset-note')
     this.tightnessSlider = this.getElement<HTMLInputElement>('tightness-slider')
     this.tightnessValue = this.getElement('tightness-value')
     this.replayButton = this.getElement<HTMLButtonElement>('replay-button')
     this.forceBars = this.getElement('force-bars')
-    this.dragHint = this.getElement('drag-hint')
-
-    this.decisionPanel = this.getElement('decision-panel')
-    this.decisionPill = this.getElement('decision-pill')
-    this.decisionTitle = this.getElement('decision-title')
-    this.decisionDetail = this.getElement('decision-detail')
-    this.checksPassed = this.getElement('checks-passed')
-    this.queuePeak = this.getElement('queue-peak')
-    this.retainedValue = this.getElement('retained-value')
-    this.readinessNote = this.getElement('readiness-note')
-    this.stageCaption = this.getElement('stage-caption')
-
-    this.impactCorrection = this.getElement('impact-correction')
-    this.impactRisk = this.getElement('impact-risk')
-    this.impactBlocker = this.getElement('impact-blocker')
-
-    this.storyCard = this.getElement('story-card')
-    this.storyNodes = Array.from(document.querySelectorAll<HTMLElement>('.story-node'))
-    this.storyNodeLines = [
-      this.getElement('story-node-0'),
-      this.getElement('story-node-1'),
-      this.getElement('story-node-2'),
-      this.getElement('story-node-3'),
-    ]
-    this.storyTitle = this.getElement('story-title')
-    this.storyCause = this.getElement('story-cause')
-    this.storyEffect = this.getElement('story-effect')
-    this.valueTitle = this.getElement('value-title')
-    this.valueMetric = this.getElement('value-metric')
-    this.valueNote = this.getElement('value-note')
 
     this.whyList = this.getElement<HTMLUListElement>('why-list')
     this.actionList = this.getElement<HTMLUListElement>('action-list')
@@ -193,8 +167,8 @@ export class UIController {
     this.selectedTightness = this.clamp01(this.parseSliderValue(this.tightnessSlider.value, 0.62))
 
     this.syncPresetButtons()
-    this.syncTightness()
     this.syncModeButtons()
+    this.syncTightness()
     this.renderMathBase()
   }
 
@@ -276,25 +250,15 @@ export class UIController {
     }
   }
 
-  setMode(mode: SceneMode): void {
-    this.selectedMode = mode
-    this.syncModeButtons()
-  }
-
-  setPresetNote(note: string): void {
-    this.presetNote.textContent = note
-  }
-
   setDragActive(active: boolean): void {
-    this.dragHint.classList.toggle('active', active)
-    this.dragHint.textContent = active
-      ? 'Dragging proposal: ship/hold is updating live.'
-      : 'Drag the red endpoint. Blue updates instantly to the safe direction.'
+    this.stageHint.textContent = active
+      ? 'Dragging proposal. Safe projection and decision are updating live.'
+      : 'Drag the red tip. Blue updates to the safest certifiable direction.'
   }
 
   renderOutcome(frame: OutcomeFrameUi): void {
-    this.decisionPanel.classList.toggle('ship', frame.decisionTone === 'ship')
-    this.decisionPanel.classList.toggle('hold', frame.decisionTone === 'hold')
+    this.decisionCard.classList.toggle('ship', frame.decisionTone === 'ship')
+    this.decisionCard.classList.toggle('hold', frame.decisionTone === 'hold')
 
     this.decisionPill.classList.toggle('ship', frame.decisionTone === 'ship')
     this.decisionPill.classList.toggle('hold', frame.decisionTone === 'hold')
@@ -302,42 +266,33 @@ export class UIController {
 
     this.decisionTitle.textContent = frame.decisionTitle
     this.decisionDetail.textContent = frame.decisionDetail
-    this.checksPassed.textContent = frame.checksText
-    this.queuePeak.textContent = frame.queueText
-    this.retainedValue.textContent = frame.retainedText
     this.readinessNote.textContent = frame.readinessText
+
+    this.nowTitle.textContent = frame.nowTitle
+    this.nowBody.textContent = frame.nowBody
+    this.nowReason.textContent = frame.nowReason
+
+    this.checksValue.textContent = frame.checksText
+    this.incidentValue.textContent = frame.incidentText
+    this.retainedValue.textContent = frame.retainedText
+
+    this.impactLine.textContent = frame.impactLine
     this.stageCaption.textContent = frame.stageCaption
-    this.guideStep.textContent = frame.guideStep
-    this.guideTitle.textContent = frame.guideTitle
-    this.guideResult.textContent = frame.guideResult
-    this.guideMetric.textContent = frame.guideMetric
 
-    this.storyCard.style.setProperty('--story-progress', `${Math.round(Math.min(Math.max(frame.storyProgress, 0), 1) * 100)}%`)
-    this.storyTitle.textContent = frame.storyTitle
-    this.storyCause.textContent = frame.storyCause
-    this.storyEffect.textContent = frame.storyEffect
-    this.valueTitle.textContent = frame.valueTitle
-    this.valueMetric.textContent = frame.valueMetric
-    this.valueNote.textContent = frame.valueNote
-    this.sidebar.dataset.storyStep = `${Math.max(0, Math.min(3, frame.storyStep))}`
+    this.pipelineCard.style.setProperty('--pipeline-progress', `${Math.round(Math.min(Math.max(frame.pipelineStep / 3, 0), 1) * 100)}%`)
 
-    for (const stepNode of this.storyNodes) {
-      const rawStep = Number.parseInt(stepNode.dataset.step ?? '', 10)
-      const step = Number.isFinite(rawStep) ? rawStep : -1
-      stepNode.classList.toggle('active', step === frame.storyStep)
-      stepNode.classList.toggle('completed', step < frame.storyStep)
+    for (const node of this.pipelineSteps) {
+      const step = Number.parseInt(node.dataset.step ?? '', 10)
+      node.classList.toggle('active', step === frame.pipelineStep)
+      node.classList.toggle('completed', step < frame.pipelineStep)
     }
 
-    frame.storyNodeLines.forEach((line, index) => {
-      const target = this.storyNodeLines[index]
-      if (target) {
-        target.textContent = line
+    frame.pipelineLines.forEach((line, index) => {
+      const node = this.pipelineLines[index]
+      if (node) {
+        node.textContent = line
       }
     })
-
-    this.impactCorrection.textContent = frame.impactCorrectionText
-    this.impactRisk.textContent = frame.impactRiskText
-    this.impactBlocker.textContent = frame.impactBlockerText
   }
 
   renderDetails(frame: DetailFrameUi): void {
@@ -348,15 +303,14 @@ export class UIController {
     this.renderList(this.actionList, frame.actionItems, 'No action generated yet.')
 
     this.renderTex(this.equationSub, frame.mathSummaryTex, true)
-
     this.renderMathTerms(frame.mathTerms)
   }
 
   renderForceBars(items: ForceBarUi[]): void {
     if (items.length === 0) {
       const empty = document.createElement('p')
-      empty.className = 'drag-hint'
-      empty.textContent = 'No active policy pressure for this patch.'
+      empty.className = 'force-empty'
+      empty.textContent = 'No active correction pressure.'
       this.forceBars.replaceChildren(empty)
       return
     }
@@ -366,37 +320,32 @@ export class UIController {
     const nodes = items.map((item) => {
       const button = document.createElement('button')
       button.type = 'button'
-      button.className = `force-bar${item.isVisible ? '' : ' hidden'}`
+      button.className = `force-bar${item.isVisible ? ' active' : ''}`
       button.dataset.constraintId = item.id
-      button.style.boxShadow = `inset 3px 0 0 ${item.color}`
+      button.style.setProperty('--bar-color', item.color)
 
-      const labelWrap = document.createElement('span')
-      labelWrap.className = 'force-label'
+      const head = document.createElement('div')
+      head.className = 'force-head'
 
-      const name = document.createElement('span')
-      name.className = 'force-name'
-      name.textContent = item.label
+      const label = document.createElement('p')
+      label.className = 'force-label'
+      label.textContent = item.label
 
-      const meta = document.createElement('span')
-      meta.className = 'force-meta'
-      meta.textContent = item.isVisible ? 'Visible in canvas' : 'Click to inspect'
+      const value = document.createElement('p')
+      value.className = 'force-value'
+      value.textContent = `λ ${item.lambda.toFixed(3)}`
 
-      const meter = document.createElement('span')
+      head.append(label, value)
+
+      const meter = document.createElement('div')
       meter.className = 'force-meter'
 
-      const meterFill = document.createElement('span')
-      meterFill.className = 'force-meter-fill'
-      meterFill.style.background = item.color
-      meterFill.style.width = `${Math.max(8, (item.lambda / maxLambda) * 100).toFixed(1)}%`
-      meter.append(meterFill)
+      const fill = document.createElement('span')
+      fill.className = 'force-meter-fill'
+      fill.style.width = `${Math.max(10, (item.lambda / maxLambda) * 100).toFixed(1)}%`
 
-      labelWrap.append(name, meta, meter)
-
-      const value = document.createElement('span')
-      value.className = 'force-value'
-      value.textContent = `Pressure ${item.lambda.toFixed(3)}`
-
-      button.append(labelWrap, value)
+      meter.append(fill)
+      button.append(head, meter)
       return button
     })
 
@@ -416,45 +365,40 @@ export class UIController {
     if (terms.length === 0) {
       const empty = document.createElement('p')
       empty.className = 'math-note'
-      empty.textContent = 'No active policy terms. The proposal is already ship-safe.'
+      empty.textContent = 'No active policy terms. Proposal is already safe.'
       this.equationTerms.replaceChildren(empty)
       return
     }
 
-    const nodes = terms.map((term) => {
-      const card = document.createElement('article')
-      card.className = `math-term${term.active ? '' : ' inactive'}`
-      card.style.borderLeftColor = term.color
-
-      const head = document.createElement('div')
-      head.className = 'math-term-head'
+    const rows = terms.map((term) => {
+      const row = document.createElement('article')
+      row.className = `math-term${term.active ? '' : ' inactive'}`
+      row.style.borderLeftColor = term.color
 
       const label = document.createElement('p')
-      label.className = 'math-term-label'
+      label.className = 'math-label'
       label.textContent = term.label
 
       const lambda = document.createElement('p')
-      lambda.className = 'math-term-lambda'
+      lambda.className = 'math-line'
       this.renderTex(lambda, term.lambdaTex, false)
 
-      head.append(label, lambda)
-
       const vector = document.createElement('p')
-      vector.className = 'math-term-vector'
+      vector.className = 'math-line'
       this.renderTex(vector, term.vectorTex, false)
 
-      card.append(head, vector)
-      return card
+      row.append(label, lambda, vector)
+      return row
     })
 
-    this.equationTerms.replaceChildren(...nodes)
+    this.equationTerms.replaceChildren(...rows)
   }
 
   private renderList(target: HTMLUListElement, items: string[], fallback: string): void {
-    const rows = items.length > 0 ? items.slice(0, 4) : [fallback]
-    const nodes = rows.map((row) => {
+    const values = items.length > 0 ? items.slice(0, 4) : [fallback]
+    const nodes = values.map((value) => {
       const li = document.createElement('li')
-      li.textContent = row
+      li.textContent = value
       return li
     })
     target.replaceChildren(...nodes)
@@ -528,11 +472,11 @@ export class UIController {
     return Math.min(Math.max(value, 0), 1)
   }
 
-  private getElement<T extends HTMLElement>(id: string): T {
-    const element = document.getElementById(id)
-    if (!element) {
-      throw new Error(`Missing UI element #${id}`)
+  private getElement<T extends HTMLElement = HTMLElement>(id: string): T {
+    const node = document.getElementById(id)
+    if (!node) {
+      throw new Error(`Missing #${id}`)
     }
-    return element as T
+    return node as T
   }
 }

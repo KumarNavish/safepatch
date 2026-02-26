@@ -13,10 +13,10 @@ const PROJECTION_TOLERANCE = 1e-6
 const UPDATE_ANIMATION_MS = 320
 const DRAG_ANIMATION_MS = 90
 const MODE_ANIMATION_MS = 220
-const TEACHING_ANIMATION_MS = 3000
+const TEACHING_ANIMATION_MS = 3400
 const MAX_RAW_RADIUS_FACTOR = 1.25
 
-const CONSTRAINT_PALETTE = ['#eb5f82', '#56a7ff', '#5fcf8b', '#f0ad63', '#8f7bea', '#53c6bc']
+const CONSTRAINT_PALETTE = ['#ef6f8f', '#4f8dff', '#18a28c', '#f0a941', '#7b5dde', '#2ea5a2']
 
 interface PresetConfig {
   id: PresetId
@@ -28,17 +28,17 @@ const PRESETS: Record<PresetId, PresetConfig> = {
   normal: {
     id: 'normal',
     pressure: 0.24,
-    note: 'Business as usual: proposal has room, but guardrails still prevent silent regressions.',
+    note: 'Normal traffic: most proposals can ship with modest correction.',
   },
   spike: {
     id: 'spike',
     pressure: 0.56,
-    note: 'Peak traffic: the same proposal creates more on-call risk, so correction pressure rises quickly.',
+    note: 'Traffic spike: guardrails push harder and unsafe components are trimmed more aggressively.',
   },
   incident: {
     id: 'incident',
     pressure: 0.9,
-    note: 'Live incident: only tightly certified movement should ship while production is unstable.',
+    note: 'Live incident: only tightly certified movement should ship.',
   },
 }
 
@@ -143,6 +143,10 @@ function clamp(value: number, min = 0, max = 1): number {
   return Math.min(Math.max(value, min), max)
 }
 
+function clamp01(value: number): number {
+  return clamp(value, 0, 1)
+}
+
 function clampRange(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
@@ -204,10 +208,6 @@ function buildHalfspaces(pressure: number, tightness: number): Halfspace[] {
   })
 }
 
-function clamp01(value: number): number {
-  return clamp(value, 0, 1)
-}
-
 function scenarioEvaluation(state: InteractiveState): Evaluation {
   const normalizedState: InteractiveState = {
     ...state,
@@ -243,6 +243,7 @@ function scenarioEvaluation(state: InteractiveState): Evaluation {
   const rawRisk = clampRange(Math.max(0, projection.maxViolationStep0) / maxBound, 0, 2)
   const safeRisk = clampRange(Math.max(0, projection.maxViolationProjected) / maxBound, 0, 2)
   const retainedGain = clampRange(projection.descentRetainedRatio, 0, 1.2)
+
   const correctionVector = {
     x: projection.step0.x - projection.projectedStep.x,
     y: projection.step0.y - projection.projectedStep.y,
@@ -251,32 +252,28 @@ function scenarioEvaluation(state: InteractiveState): Evaluation {
   const rawNorm = Math.max(1e-6, Math.hypot(projection.step0.x, projection.step0.y))
   const correctionNormRatio = clampRange(correctionNorm / rawNorm, 0, 2)
 
-  const baseQueue = 190 + normalizedState.pressure * 320 + normalizedState.tightness * 38
-  const queueRawPeak = Math.round(clampRange(baseQueue + rawRisk * 330 + (1 - retainedGain) * 35, 80, 3800))
-  const queueSafePeak = Math.round(clampRange(baseQueue + safeRisk * 190 + (1 - retainedGain) * 60 - 46, 60, 3800))
+  const baseQueue = 160 + normalizedState.pressure * 340 + normalizedState.tightness * 52
+  const queueRawPeak = Math.round(clampRange(baseQueue + rawRisk * 360 + (1 - retainedGain) * 42, 80, 3800))
+  const queueSafePeak = Math.round(clampRange(baseQueue + safeRisk * 180 + (1 - retainedGain) * 62 - 54, 60, 3800))
   const queuePeakDelta = queueRawPeak - queueSafePeak
   const riskDropPct = clampRange(((rawRisk - safeRisk) / Math.max(rawRisk, 0.05)) * 100, -200, 100)
 
   let decisionTone: 'ship' | 'hold' = 'ship'
-  let decisionTitle = 'Ship with canary: direction is certifiable'
-  let decisionDetail = 'All active release checks pass while preserving useful fix value.'
+  let decisionTitle = 'Ship: certified patch is ready for canary'
+  let decisionDetail = 'All active checks pass while preserving meaningful product value.'
 
   if (!projection.ship) {
     decisionTone = 'hold'
-    decisionTitle = 'Hold: policy envelope has no safe direction'
-    decisionDetail = projection.reason ?? 'No certifiable patch exists under the current active guardrails.'
+    decisionTitle = 'Hold: no certifiable direction in current envelope'
+    decisionDetail = projection.reason ?? 'No feasible patch exists under active guardrails.'
   } else if (safeViolationCount > 0) {
     decisionTone = 'hold'
-    decisionTitle = 'Hold: certified patch still violates checks'
-    decisionDetail = `Even after correction, ${safeViolationCount} release polic${safeViolationCount > 1 ? 'ies' : 'y'} still fail.`
+    decisionTitle = 'Hold: projected patch still violates guardrails'
+    decisionDetail = `Projected direction still fails ${safeViolationCount} active check${safeViolationCount > 1 ? 's' : ''}.`
   } else if (retainedGain < 0.34) {
     decisionTone = 'hold'
-    decisionTitle = 'Hold: too little product value remains'
-    decisionDetail = `Safety correction keeps only ${Math.round(retainedGain * 100)}% of intended benefit.`
-  } else if (queueSafePeak > queueRawPeak + 20) {
-    decisionTone = 'hold'
-    decisionTitle = 'Hold: rollout pressure remains too high'
-    decisionDetail = 'Patch is policy-safe, but expected incident load does not improve enough to justify release.'
+    decisionTitle = 'Hold: correction removes too much useful impact'
+    decisionDetail = `Only ${Math.round(retainedGain * 100)}% of intended gain remains after correction.`
   }
 
   const queueImprovementRatio = clampRange((queueRawPeak - queueSafePeak) / Math.max(queueRawPeak, 1), -0.4, 1)
@@ -303,38 +300,36 @@ function scenarioEvaluation(state: InteractiveState): Evaluation {
     : null
 
   const whyItems: string[] = [
-    `Policy status improved from ${checksRawPassed}/${activeCheckCount} to ${checksSafePassed}/${activeCheckCount} checks passed.`,
+    `Checks improved from ${checksRawPassed}/${activeCheckCount} to ${checksSafePassed}/${activeCheckCount}.`,
     activeLabels.length > 0
-      ? `Most correction pressure came from: ${activeLabels.join(', ')}.`
-      : 'No correction pressure was needed because the proposed direction was already safe.',
-    `Safety trim removed ${Math.round(correctionNormRatio * 100)}% of proposed movement.`,
-    `Incident forecast moved ${queueRawPeak.toLocaleString()} -> ${queueSafePeak.toLocaleString()} while retaining ${Math.round(
-      retainedGain * 100,
-    )}% expected value.`,
+      ? `Most correction pressure came from ${activeLabels.join(', ')}.`
+      : 'No correction pressure: the proposal was already inside guardrails.',
+    `Projected patch keeps ${Math.round(retainedGain * 100)}% intended gain after trimming ${Math.round(correctionNormRatio * 100)}%.`,
+    `Incident forecast moved ${queueRawPeak.toLocaleString()} -> ${queueSafePeak.toLocaleString()}.`,
   ]
 
   const actionItems: string[] =
     decisionTone === 'ship'
       ? [
-          'Ship the certified direction behind a staged canary rollout.',
-          'Monitor incident load and the top pressure policy for the first 15 minutes.',
-          'Keep rollback automation armed until stability is confirmed.',
+          'Ship with staged canary and monitor first 15 minutes.',
+          'Watch top pressure guardrail during rollout.',
+          'Keep automated rollback armed until stability confirms.',
         ]
       : [
-          'Do not ship this direction yet.',
+          'Do not ship this patch direction yet.',
           dominantConstraintLabel
-            ? `Drag away from "${dominantConstraintLabel}" pressure until correction cost drops.`
-            : 'Drag the proposal toward the safe zone, or lower policy strictness temporarily.',
-          'Use Policy Forces view to inspect which guardrail is pushing hardest.',
+            ? `Drag away from "${dominantConstraintLabel}" pressure until trim decreases.`
+            : 'Drag proposal back toward the feasible zone and retry.',
+          'Use Forces view to inspect which guardrail pushes hardest.',
         ]
 
   const memoText = [
     `SafePatch decision: ${decisionTone.toUpperCase()}.`,
-    `Traffic context: ${normalizedState.presetId}. Risk tolerance: ${Math.round(normalizedState.tightness * 100)}%.`,
-    `Policy checks: ${checksRawPassed}/${activeCheckCount} -> ${checksSafePassed}/${activeCheckCount}.`,
-    `Queue peak forecast: ${queueRawPeak} -> ${queueSafePeak}.`,
-    `Product gain retained: ${Math.round(retainedGain * 100)}%.`,
-    `Decision detail: ${decisionDetail}`,
+    `Scenario: ${normalizedState.presetId}. Tightness: ${Math.round(normalizedState.tightness * 100)}%.`,
+    `Checks: ${checksRawPassed}/${activeCheckCount} -> ${checksSafePassed}/${activeCheckCount}.`,
+    `Queue forecast: ${queueRawPeak} -> ${queueSafePeak}.`,
+    `Gain retained: ${Math.round(retainedGain * 100)}%.`,
+    `Detail: ${decisionDetail}`,
   ].join(' ')
 
   return {
@@ -405,13 +400,21 @@ function buildMathTerms(evaluation: Evaluation): MathTermUi[] {
         id: diagnostic.id,
         label: diagnostic.label,
         lambdaTex: String.raw`\lambda_{${suffix}}=${diagnostic.lambda.toFixed(3)}`,
-        vectorTex: String.raw`-\eta\,\lambda_{${suffix}}\,n_{${suffix}}=\left(${correction.x.toFixed(
+        vectorTex: String.raw`-\eta\,\lambda_{${suffix}}\,n_{${suffix}}=\left(${correction.x.toFixed(3)},\;${correction.y.toFixed(
           3,
-        )},\;${correction.y.toFixed(3)}\right)`,
+        )}\right)`,
         color: forceColor(diagnostic.id),
         active: evaluation.projection.activeSetIds.includes(diagnostic.id),
       }
     })
+}
+
+function incidentRawPerHour(evaluation: Evaluation): number {
+  return Math.max(0, Math.round((evaluation.queueRawPeak / 13) * 10) / 10)
+}
+
+function incidentSafePerHour(evaluation: Evaluation): number {
+  return Math.max(0, Math.round((evaluation.queueSafePeak / 13) * 10) / 10)
 }
 
 function buildOutcomeFrame(
@@ -420,11 +423,12 @@ function buildOutcomeFrame(
   teachingProgress: number,
   dragging: boolean,
 ): OutcomeFrameUi {
-  const activeProgress = clamp(teachingProgress)
-  const duringStory = mode === 'geometry' && activeProgress < 1
-  const incidentRawPerHour = Math.max(0, Math.round((evaluation.queueRawPeak / 13) * 10) / 10)
-  const incidentSafePerHour = Math.max(0, Math.round((evaluation.queueSafePeak / 13) * 10) / 10)
-  const incidentDelta = Math.round((incidentRawPerHour - incidentSafePerHour) * 10) / 10
+  const progress = clamp(teachingProgress)
+  const duringStory = mode === 'geometry' && progress < 1
+
+  const incidentRaw = incidentRawPerHour(evaluation)
+  const incidentSafe = incidentSafePerHour(evaluation)
+  const incidentDelta = Math.round((incidentRaw - incidentSafe) * 10) / 10
 
   const dominantActiveId = evaluation.projection.activeSetIds
     .slice()
@@ -434,204 +438,129 @@ function buildOutcomeFrame(
     ? evaluation.halfspaces.find((halfspace) => halfspace.id === dominantActiveId)?.label ?? dominantActiveId
     : null
 
-  const dominantLambda = dominantActiveId ? evaluation.projection.lambdaById[dominantActiveId] ?? 0 : 0
+  let pipelineStep = 3
+  let stageCaption = 'Red is raw proposal. Blue is certified patch.'
 
-  let storyStep = 3
-  let storyProgress = 1
-  let storyTitle = 'Live simulation mode'
-  let storyCause = 'Cause: proposal direction is continuously checked against active guardrails.'
-  let storyEffect = `Effect: decision is ${evaluation.decisionTone.toUpperCase()} with updated risk and retention.`
-  let guideStep = 'NOW: Continuous Evaluation'
-  let guideTitle = 'SafePatch is continuously evaluating safety and retained value.'
-  let guideResult = `Current recommendation: ${evaluation.decisionTone.toUpperCase()}.`
-  let guideMetric =
+  let nowTitle = 'Live decision'
+  let nowBody = 'SafePatch is continuously certifying the proposal against active guardrails.'
+  let nowReason = `Recommendation: ${evaluation.decisionTone.toUpperCase()}.`
+
+  let impactLine =
     incidentDelta >= 0
-      ? `Projected incident reduction: ${incidentDelta.toFixed(1)} /hr`
-      : `Projected incident increase: ${Math.abs(incidentDelta).toFixed(1)} /hr`
-  let valueTitle = 'Net release impact'
-  let valueMetric = `${Math.round((incidentSafePerHourSafe(evaluation) - incidentRawPerHourSafe(evaluation)) * 10) / 10} /hr delta`
-  let valueNote = 'SafePatch compares raw versus certifiable outcomes.'
-  let storyNodeLines: [string, string, string, string] = [
-    `Raw proposal set at (${evaluation.projection.step0.x.toFixed(2)}, ${evaluation.projection.step0.y.toFixed(2)}).`,
-    dominantLabel ? `Primary violation: ${dominantLabel}.` : 'No blocking violation detected.',
-    `Safety projection trims ${Math.round(evaluation.correctionNormRatio * 100)}% of movement.`,
-    `Decision: ${evaluation.decisionTone.toUpperCase()} with ${evaluation.checksSafePassed}/${evaluation.activeCheckCount} checks passing.`,
+      ? `${incidentDelta.toFixed(1)} incidents/hr avoided after certification.`
+      : `${Math.abs(incidentDelta).toFixed(1)} incidents/hr added even after certification.`
+
+  let pipelineLines: [string, string, string, string] = [
+    `Raw proposal Δ0 = (${evaluation.projection.step0.x.toFixed(2)}, ${evaluation.projection.step0.y.toFixed(2)}).`,
+    dominantLabel ? `Top guardrail pressure: ${dominantLabel}.` : 'No active guardrail pressure.',
+    `Trimmed ${Math.round(evaluation.correctionNormRatio * 100)}% to create Δ* safely.`,
+    `Decision ${evaluation.decisionTone.toUpperCase()} at confidence ${evaluation.readiness}/100.`,
   ]
 
   if (duringStory) {
-    storyProgress = activeProgress
-    if (activeProgress < 0.28) {
-      storyStep = 0
-      guideStep = 'NOW: Proposal Intake'
-      guideTitle = 'The raw patch direction is being staged and scored.'
-      guideResult = 'No release decision yet.'
-      storyTitle = 'Step 1: propose a patch direction'
-      storyCause = 'Cause: raw patch is pointed toward the target fix.'
-      storyEffect = 'Effect: system predicts risk before anything ships.'
-      valueTitle = 'Raw direction under evaluation'
-      valueMetric = `${incidentRawPerHourSafe(evaluation)} /hr projected`
-      valueNote = 'No safety correction is applied yet.'
-      guideMetric = `Raw forecast: ${incidentRawPerHour.toFixed(1)} incidents /hr`
-      storyNodeLines = [
-        `Raw direction captured: (${evaluation.projection.step0.x.toFixed(2)}, ${evaluation.projection.step0.y.toFixed(2)}).`,
-        'Guardrail checks are being evaluated.',
-        'Projection not applied yet.',
-        'Decision pending until checks complete.',
+    if (progress < 0.28) {
+      pipelineStep = 0
+      nowTitle = 'Intake raw proposal'
+      nowBody = 'The system reads your candidate fix direction before any safety correction.'
+      nowReason = 'No release recommendation yet.'
+      stageCaption = 'Step 1: intake raw proposal.'
+      impactLine = `Raw forecast: ${incidentRaw.toFixed(1)} incidents/hr if shipped directly.`
+      pipelineLines = [
+        `Proposal captured as Δ0 = (${evaluation.projection.step0.x.toFixed(2)}, ${evaluation.projection.step0.y.toFixed(2)}).`,
+        'Guardrail checks are being computed.',
+        'No correction applied yet.',
+        'Decision pending.',
       ]
-    } else if (activeProgress < 0.46) {
-      storyStep = 1
-      guideStep = 'NOW: Violation Detection'
-      guideTitle = dominantLabel
-        ? `Guardrail "${dominantLabel}" is being violated by raw direction.`
-        : 'A release guardrail is being violated by raw direction.'
-      guideResult = 'Raw rollout is blocked until correction.'
-      storyTitle = 'Step 2: guardrail violation is detected'
-      storyCause = dominantLabel
-        ? `Cause: raw direction pushes into "${dominantLabel}".`
-        : 'Cause: raw direction crosses a release guardrail.'
-      storyEffect = 'Effect: direct ship is blocked and correction is required.'
-      valueTitle = 'Raw direction is unsafe'
-      valueMetric = `${incidentRawPerHourSafe(evaluation)} /hr if shipped raw`
-      valueNote = 'Risk exceeds certified envelope.'
-      guideMetric = dominantLabel ? `Blocking guardrail: ${dominantLabel}` : 'Blocking guardrail detected'
-      storyNodeLines = [
-        `Raw proposal still targets (${evaluation.projection.step0.x.toFixed(2)}, ${evaluation.projection.step0.y.toFixed(2)}).`,
-        dominantLabel ? `Violation confirmed on ${dominantLabel}.` : 'Violation confirmed on active guardrail.',
-        'System prepares correction vector.',
-        'Release remains HOLD until corrected.',
+    } else if (progress < 0.46) {
+      pipelineStep = 1
+      nowTitle = 'Detect guardrail risk'
+      nowBody = dominantLabel
+        ? `Raw proposal crosses guardrail "${dominantLabel}".`
+        : 'Raw proposal crosses at least one active guardrail.'
+      nowReason = 'Direct ship is blocked. Correction is required.'
+      stageCaption = 'Step 2: violation detected and highlighted.'
+      impactLine = dominantLabel
+        ? `Blocker identified: ${dominantLabel}.`
+        : 'Blocker identified from active guardrails.'
+      pipelineLines = [
+        `Raw Δ0 still points to (${evaluation.projection.step0.x.toFixed(2)}, ${evaluation.projection.step0.y.toFixed(2)}).`,
+        dominantLabel ? `Violation confirmed on ${dominantLabel}.` : 'Violation confirmed on guardrail envelope.',
+        'Correction vector is prepared.',
+        'Decision remains HOLD until correction lands.',
       ]
-    } else if (activeProgress < 0.72) {
-      storyStep = 2
-      guideStep = 'NOW: Safety Projection'
-      guideTitle = 'SafePatch is removing only the unsafe component of the patch.'
-      guideResult = `${Math.round(evaluation.correctionNormRatio * 100)}% movement trimmed to recover safety.`
-      storyTitle = 'Step 3: unsafe component is removed'
-      storyCause = 'Cause: projection applies correction opposite active guardrails.'
-      storyEffect = `Effect: ${Math.round(evaluation.correctionNormRatio * 100)}% of the movement is trimmed to regain safety.`
-      valueTitle = 'Safety correction in progress'
-      valueMetric = `${Math.round(evaluation.correctionNormRatio * 100)}% trimmed`
-      valueNote = `Still retaining ${Math.round(evaluation.retainedGain * 100)}% intended fix value.`
-      guideMetric = `Trim applied: ${Math.round(evaluation.correctionNormRatio * 100)}%`
-      storyNodeLines = [
-        `Raw proposal kept visible as Δ0.`,
-        dominantLabel ? `${dominantLabel} pushes back on unsafe component.` : 'Active guardrails push back on unsafe component.',
-        `Projected Δ* now retains ${Math.round(evaluation.retainedGain * 100)}% useful gain.`,
-        'Decision recalculating with corrected direction.',
+    } else if (progress < 0.72) {
+      pipelineStep = 2
+      nowTitle = 'Project certified patch'
+      nowBody = 'SafePatch removes only the unsafe component while preserving useful movement.'
+      nowReason = `Trim applied: ${Math.round(evaluation.correctionNormRatio * 100)}%.`
+      stageCaption = 'Step 3: unsafe component is removed.'
+      impactLine = `Certification keeps ${Math.round(evaluation.retainedGain * 100)}% useful gain.`
+      pipelineLines = [
+        'Raw Δ0 remains visible for comparison.',
+        dominantLabel ? `${dominantLabel} contributes push-back force.` : 'Active guardrails contribute push-back force.',
+        `Projected Δ* keeps ${Math.round(evaluation.retainedGain * 100)}% useful gain.`,
+        'Decision recomputing with certified patch.',
       ]
     } else {
-      storyStep = 3
-      guideStep = 'NOW: Release Recommendation'
-      guideTitle = 'Certified direction is complete and policy-compliant.'
-      guideResult = `Recommendation: ${evaluation.decisionTone.toUpperCase()} (${evaluation.readiness}/100 confidence).`
-      storyTitle = 'Step 4: certified patch and decision'
-      storyCause = `Cause: certified direction satisfies ${evaluation.checksSafePassed}/${evaluation.activeCheckCount} checks.`
-      storyEffect = `Effect: release decision becomes ${evaluation.decisionTone.toUpperCase()}.`
-      const incidentDelta = incidentRawPerHourSafe(evaluation) - incidentSafePerHourSafe(evaluation)
-      valueTitle = 'Certified net outcome'
-      valueMetric = incidentDelta >= 0 ? `${incidentDelta.toFixed(1)} /hr prevented` : `${Math.abs(incidentDelta).toFixed(1)} /hr added`
-      valueNote = `Certified patch keeps ${Math.round(evaluation.retainedGain * 100)}% of intended fix value.`
-      guideMetric =
+      pipelineStep = 3
+      nowTitle = 'Recommend release action'
+      nowBody = 'Certified patch is scored for policy compliance and operational impact.'
+      nowReason = `Recommendation: ${evaluation.decisionTone.toUpperCase()} (${evaluation.readiness}/100).`
+      stageCaption = 'Step 4: certified patch and recommendation.'
+      impactLine =
         incidentDelta >= 0
-          ? `Certified reduction: ${incidentDelta.toFixed(1)} incidents /hr`
-          : `Certified increase: ${Math.abs(incidentDelta).toFixed(1)} incidents /hr`
-      storyNodeLines = [
-        `Raw Δ0 would trigger ${incidentRawPerHour.toFixed(1)} incidents /hr.`,
+          ? `${incidentDelta.toFixed(1)} incidents/hr prevented versus raw ship.`
+          : `${Math.abs(incidentDelta).toFixed(1)} incidents/hr higher even after correction.`
+      pipelineLines = [
+        `Raw path would yield ${incidentRaw.toFixed(1)} incidents/hr.`,
         `${evaluation.checksRawPassed}/${evaluation.activeCheckCount} checks pass before correction.`,
-        `Safe Δ* trims ${Math.round(evaluation.correctionNormRatio * 100)}% and keeps ${Math.round(evaluation.retainedGain * 100)}%.`,
-        `Final decision: ${evaluation.decisionTone.toUpperCase()} (${evaluation.readiness}/100 confidence).`,
+        `Certified Δ* yields ${incidentSafe.toFixed(1)} incidents/hr.`,
+        `Final decision: ${evaluation.decisionTone.toUpperCase()} (${evaluation.readiness}/100).`,
       ]
     }
   } else if (mode === 'forces') {
-    storyStep = 2
-    storyProgress = 1
-    guideStep = 'NOW: Blocker Inspection'
-    guideTitle = 'Inspecting per-guardrail correction contributions.'
-    guideResult = dominantLabel ? `Top blocker: ${dominantLabel}.` : 'No active blockers right now.'
-    storyTitle = 'Forces inspection mode'
-    storyCause = 'Cause: each active guardrail contributes a correction force.'
-    storyEffect = 'Effect: selecting a bar isolates one blocker contribution on canvas.'
-    valueTitle = 'Which blocker matters most?'
-    valueMetric = dominantLabel ? `${dominantLabel}` : 'No active blocker'
-    valueNote = 'Use pressure bars to inspect one correction component at a time.'
-    guideMetric = dominantLabel ? `Top pressure λ: ${dominantLambda.toFixed(3)}` : 'No active λ pressure'
-    storyNodeLines = [
+    pipelineStep = 2
+    nowTitle = 'Inspect correction forces'
+    nowBody = 'Each active guardrail contributes a correction component.'
+    nowReason = dominantLabel ? `Top pressure: ${dominantLabel}.` : 'No active correction pressure.'
+    stageCaption = 'Forces view: inspect how each guardrail bends the proposal.'
+    impactLine = dominantLabel
+      ? `Click bars to isolate ${dominantLabel} contribution.`
+      : 'No active forces. Proposal is already safe.'
+    pipelineLines = [
       `Raw Δ0 = (${evaluation.projection.step0.x.toFixed(2)}, ${evaluation.projection.step0.y.toFixed(2)}).`,
-      dominantLabel ? `Active blocker: ${dominantLabel}.` : 'No blocker currently active.',
-      'Click a pressure bar to isolate one correction arrow.',
+      dominantLabel ? `Top blocker: ${dominantLabel}.` : 'No active blocker.',
+      'Selected bar reveals one correction arrow on stage.',
       `Decision remains ${evaluation.decisionTone.toUpperCase()} during inspection.`,
     ]
-  } else if (!dragging) {
-    storyStep = 3
-    storyProgress = 1
-    guideStep = 'NOW: Ready for Next Patch'
-    guideTitle = 'Current patch is projected and scored.'
-    guideResult = `Recommendation: ${evaluation.decisionTone.toUpperCase()} (${evaluation.readiness}/100 confidence).`
-    storyTitle = 'Ready for next proposal'
-    storyCause = 'Cause: current direction has already been projected to a safe candidate.'
-    storyEffect = 'Effect: drag again to test another patch idea instantly.'
-    const incidentDelta = incidentRawPerHourSafe(evaluation) - incidentSafePerHourSafe(evaluation)
-    valueTitle = 'Current certified outcome'
-    valueMetric = incidentDelta >= 0 ? `${incidentDelta.toFixed(1)} /hr prevented` : `${Math.abs(incidentDelta).toFixed(1)} /hr added`
-    valueNote = `Retains ${Math.round(evaluation.retainedGain * 100)}% of intended fix value.`
-    guideMetric = `${evaluation.checksSafePassed}/${evaluation.activeCheckCount} checks certified`
-    storyNodeLines = [
-      `Latest raw proposal: (${evaluation.projection.step0.x.toFixed(2)}, ${evaluation.projection.step0.y.toFixed(2)}).`,
-      dominantLabel ? `Most sensitive guardrail: ${dominantLabel}.` : 'No strong blocker currently active.',
-      `Certified patch keeps ${Math.round(evaluation.retainedGain * 100)}% useful gain.`,
-      `Ready state: ${evaluation.decisionTone.toUpperCase()} (${evaluation.readiness}/100).`,
-    ]
-  }
-
-  let stageCaption: string
-  if (mode === 'forces') {
-    stageCaption = 'Forces view: pick one blocker to see how it bends the proposal.'
-  } else if (duringStory) {
-    stageCaption = storyTitle
   } else if (dragging) {
-    const incidentDelta = Math.round((evaluation.queuePeakDelta / 13) * 10) / 10
-    const queueNarrative =
-      incidentDelta >= 0 ? `${Math.abs(incidentDelta)} incidents/hr avoided` : `${Math.abs(incidentDelta)} incidents/hr added`
-    stageCaption = `Live impact: ${queueNarrative}; trim ${Math.round(evaluation.correctionNormRatio * 100)}%.`
-  } else if (dominantLabel && dominantLambda > PROJECTION_TOLERANCE) {
-    stageCaption = `Top blocker: ${dominantLabel} (pressure ${dominantLambda.toFixed(3)}).`
-  } else {
-    stageCaption = 'Red is proposal. Blue is the certifiable patch.'
+    pipelineStep = 3
+    nowTitle = 'Live interactive certification'
+    nowBody = 'As you drag, SafePatch continuously recomputes a certifiable patch.'
+    nowReason = `Live recommendation: ${evaluation.decisionTone.toUpperCase()}.`
+    stageCaption = `Live update: trim ${Math.round(evaluation.correctionNormRatio * 100)}% while dragging.`
+    impactLine =
+      incidentDelta >= 0
+        ? `${Math.abs(incidentDelta).toFixed(1)} incidents/hr lower than raw.`
+        : `${Math.abs(incidentDelta).toFixed(1)} incidents/hr higher than raw.`
   }
 
   return {
     decisionTone: evaluation.decisionTone,
     decisionTitle: evaluation.decisionTitle,
     decisionDetail: evaluation.decisionDetail,
-    checksText: `${evaluation.checksSafePassed}/${evaluation.activeCheckCount} certified`,
-    queueText: `${incidentSafePerHour}/hr (raw ${incidentRawPerHour}/hr)`,
-    retainedText: `${Math.round(evaluation.retainedGain * 100)}%`,
     readinessText: `Release confidence: ${evaluation.readiness}/100`,
+    nowTitle,
+    nowBody,
+    nowReason,
+    checksText: `${evaluation.checksSafePassed}/${evaluation.activeCheckCount}`,
+    incidentText: `${incidentSafe}/hr (raw ${incidentRaw}/hr)`,
+    retainedText: `${Math.round(evaluation.retainedGain * 100)}%`,
+    impactLine,
     stageCaption,
-    guideStep,
-    guideTitle,
-    guideResult,
-    guideMetric,
-    storyProgress,
-    storyStep,
-    storyTitle,
-    storyCause,
-    storyEffect,
-    storyNodeLines,
-    valueTitle,
-    valueMetric,
-    valueNote,
-    impactCorrectionText: `${Math.round(evaluation.correctionNormRatio * 100)}% trimmed`,
-    impactRiskText: incidentDelta >= 0 ? `${Math.abs(incidentDelta)} /hr lower` : `${Math.abs(incidentDelta)} /hr higher`,
-    impactBlockerText: evaluation.dominantConstraintLabel ?? 'None',
+    pipelineStep,
+    pipelineLines,
   }
-}
-
-function incidentRawPerHourSafe(evaluation: Evaluation): number {
-  return Math.max(0, Math.round((evaluation.queueRawPeak / 13) * 10) / 10)
-}
-
-function incidentSafePerHourSafe(evaluation: Evaluation): number {
-  return Math.max(0, Math.round((evaluation.queueSafePeak / 13) * 10) / 10)
 }
 
 function dominantConstraintId(evaluation: Evaluation): string | null {
@@ -661,11 +590,11 @@ function buildDetailFrame(evaluation: Evaluation): DetailFrameUi {
 
 function clampRawStep(step: Vec2, halfspaces: Halfspace[]): Vec2 {
   const radius = worldBoundsFromHalfspaces(halfspaces) * MAX_RAW_RADIUS_FACTOR
-  const mag = Math.hypot(step.x, step.y)
-  if (mag <= radius || mag < PROJECTION_TOLERANCE) {
+  const magnitude = Math.hypot(step.x, step.y)
+  if (magnitude <= radius || magnitude < PROJECTION_TOLERANCE) {
     return step
   }
-  const ratio = radius / mag
+  const ratio = radius / magnitude
   return scale(step, ratio)
 }
 
@@ -777,11 +706,10 @@ function start(): void {
   let targetEvaluation = scenarioEvaluation(targetState)
   let highlightedConstraintId: string | null = dominantConstraintId(targetEvaluation)
   const visibleCorrectionIds = new Set<string>(highlightedConstraintId ? [highlightedConstraintId] : [])
-  let rawTrail: Vec2[] = [{ ...targetEvaluation.projection.step0 }]
-  let safeTrail: Vec2[] = [{ ...targetEvaluation.projection.projectedStep }]
 
   let teachingStart = performance.now()
   let teachingActive = true
+
   let dragging = false
   let dragPointerId: number | null = null
 
@@ -797,6 +725,7 @@ function start(): void {
       (id) => (evaluation.projection.lambdaById[id] ?? 0) > PROJECTION_TOLERANCE,
     )
     const activeSet = new Set(activeIds)
+
     const fallback = dominantConstraintId(evaluation)
     const nextHighlighted = highlightedConstraintId && activeSet.has(highlightedConstraintId) ? highlightedConstraintId : fallback
 
@@ -807,7 +736,7 @@ function start(): void {
     }
   }
 
-  function syncStaticPanels(): void {
+  function syncPanels(): void {
     ui.renderDetails(buildDetailFrame(targetEvaluation))
     ui.renderForceBars(buildForceBars(targetEvaluation, visibleCorrectionIds))
     ui.toggleForcePanel(targetState.mode === 'forces')
@@ -831,8 +760,6 @@ function start(): void {
     targetState = merged
     targetEvaluation = scenarioEvaluation(targetState)
     syncVisibleCorrections(targetEvaluation)
-    rawTrail = [...rawTrail.slice(-30), { ...targetEvaluation.projection.step0 }]
-    safeTrail = [...safeTrail.slice(-30), { ...targetEvaluation.projection.projectedStep }]
 
     if (immediate) {
       tweenFrom = cloneState(targetState)
@@ -850,7 +777,7 @@ function start(): void {
       teachingActive = false
     }
 
-    syncStaticPanels()
+    syncPanels()
   }
 
   function onDragStart(event: PointerEvent): void {
@@ -925,8 +852,6 @@ function start(): void {
       highlightedConstraintId,
       visibleCorrectionIds: [...visibleCorrectionIds],
       dragActive: dragging,
-      rawTrail,
-      safeTrail,
     })
 
     ui.renderOutcome(buildOutcomeFrame(displayedEvaluation, displayedState.mode, teachingProgress, dragging))
@@ -956,8 +881,6 @@ function start(): void {
   ui.onReplay(() => {
     teachingActive = true
     teachingStart = performance.now()
-    rawTrail = [{ ...targetEvaluation.projection.step0 }]
-    safeTrail = [{ ...targetEvaluation.projection.projectedStep }]
   })
 
   ui.onForceToggle((constraintId) => {
@@ -982,7 +905,7 @@ function start(): void {
   })
 
   renderer.resize()
-  syncStaticPanels()
+  syncPanels()
   requestAnimationFrame(frame)
 }
 
