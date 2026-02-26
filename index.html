@@ -43,6 +43,7 @@
             <p id="guide-step" class="guide-step">NOW: Proposal Intake</p>
             <p id="guide-title" class="guide-title">SafePatch is reading your raw patch direction.</p>
             <p id="guide-result" class="guide-result">No release recommendation yet.</p>
+            <p id="guide-metric" class="guide-metric">Projected release lift: --</p>
           </article>
 
           <article id="decision-panel" class="decision-surface hold">
@@ -76,19 +77,41 @@
           <p id="readiness-note" class="readiness-note">Release confidence: --</p>
 
           <section id="story-card" class="story-card" aria-label="Synchronized process playback">
-            <p class="panel-kicker">Process playback</p>
-            <div class="story-progress" aria-hidden="true">
-              <span id="story-progress-fill" class="story-progress-fill"></span>
-            </div>
-            <div class="story-steps" aria-hidden="true">
-              <span class="story-step" data-step="0">Proposal</span>
-              <span class="story-step" data-step="1">Violation</span>
-              <span class="story-step" data-step="2">Correction</span>
-              <span class="story-step" data-step="3">Decision</span>
-            </div>
+            <p class="panel-kicker">Live Release Feed</p>
             <p id="story-title" class="story-title">Proposal simulation starts.</p>
             <p id="story-cause" class="story-line">Cause: raw patch direction is evaluated against active guardrails.</p>
             <p id="story-effect" class="story-line">Effect: ship/hold remains pending until correction completes.</p>
+
+            <div class="story-feed" aria-live="polite">
+              <article class="story-node" data-step="0">
+                <span class="story-dot"></span>
+                <div class="story-node-copy">
+                  <p class="story-node-title">Raw patch intake</p>
+                  <p id="story-node-0" class="story-node-line">Waiting for proposal.</p>
+                </div>
+              </article>
+              <article class="story-node" data-step="1">
+                <span class="story-dot"></span>
+                <div class="story-node-copy">
+                  <p class="story-node-title">Guardrail check</p>
+                  <p id="story-node-1" class="story-node-line">No violation detected yet.</p>
+                </div>
+              </article>
+              <article class="story-node" data-step="2">
+                <span class="story-dot"></span>
+                <div class="story-node-copy">
+                  <p class="story-node-title">Safety projection</p>
+                  <p id="story-node-2" class="story-node-line">No correction applied yet.</p>
+                </div>
+              </article>
+              <article class="story-node" data-step="3">
+                <span class="story-dot"></span>
+                <div class="story-node-copy">
+                  <p class="story-node-title">Release recommendation</p>
+                  <p id="story-node-3" class="story-node-line">Final decision pending.</p>
+                </div>
+              </article>
+            </div>
 
             <div class="story-chips" aria-label="Internal signals">
               <span class="story-chip">Trim <strong id="impact-correction">--</strong></span>

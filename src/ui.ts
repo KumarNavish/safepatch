@@ -42,11 +42,13 @@ export interface OutcomeFrameUi {
   guideStep: string
   guideTitle: string
   guideResult: string
+  guideMetric: string
   storyProgress: number
   storyStep: number
   storyTitle: string
   storyCause: string
   storyEffect: string
+  storyNodeLines: [string, string, string, string]
   valueTitle: string
   valueMetric: string
   valueNote: string
@@ -71,6 +73,7 @@ export class UIController {
   private readonly guideStep: HTMLElement
   private readonly guideTitle: HTMLElement
   private readonly guideResult: HTMLElement
+  private readonly guideMetric: HTMLElement
 
   private readonly presetNote: HTMLElement
   private readonly tightnessSlider: HTMLInputElement
@@ -93,8 +96,9 @@ export class UIController {
   private readonly impactRisk: HTMLElement
   private readonly impactBlocker: HTMLElement
 
-  private readonly storyProgressFill: HTMLElement
-  private readonly storySteps: HTMLElement[]
+  private readonly storyCard: HTMLElement
+  private readonly storyNodes: HTMLElement[]
+  private readonly storyNodeLines: HTMLElement[]
   private readonly storyTitle: HTMLElement
   private readonly storyCause: HTMLElement
   private readonly storyEffect: HTMLElement
@@ -132,6 +136,7 @@ export class UIController {
     this.guideStep = this.getElement('guide-step')
     this.guideTitle = this.getElement('guide-title')
     this.guideResult = this.getElement('guide-result')
+    this.guideMetric = this.getElement('guide-metric')
     this.presetNote = this.getElement('preset-note')
     this.tightnessSlider = this.getElement<HTMLInputElement>('tightness-slider')
     this.tightnessValue = this.getElement('tightness-value')
@@ -153,8 +158,14 @@ export class UIController {
     this.impactRisk = this.getElement('impact-risk')
     this.impactBlocker = this.getElement('impact-blocker')
 
-    this.storyProgressFill = this.getElement('story-progress-fill')
-    this.storySteps = Array.from(document.querySelectorAll<HTMLElement>('.story-step'))
+    this.storyCard = this.getElement('story-card')
+    this.storyNodes = Array.from(document.querySelectorAll<HTMLElement>('.story-node'))
+    this.storyNodeLines = [
+      this.getElement('story-node-0'),
+      this.getElement('story-node-1'),
+      this.getElement('story-node-2'),
+      this.getElement('story-node-3'),
+    ]
     this.storyTitle = this.getElement('story-title')
     this.storyCause = this.getElement('story-cause')
     this.storyEffect = this.getElement('story-effect')
@@ -299,8 +310,9 @@ export class UIController {
     this.guideStep.textContent = frame.guideStep
     this.guideTitle.textContent = frame.guideTitle
     this.guideResult.textContent = frame.guideResult
+    this.guideMetric.textContent = frame.guideMetric
 
-    this.storyProgressFill.style.width = `${Math.round(Math.min(Math.max(frame.storyProgress, 0), 1) * 100)}%`
+    this.storyCard.style.setProperty('--story-progress', `${Math.round(Math.min(Math.max(frame.storyProgress, 0), 1) * 100)}%`)
     this.storyTitle.textContent = frame.storyTitle
     this.storyCause.textContent = frame.storyCause
     this.storyEffect.textContent = frame.storyEffect
@@ -309,12 +321,19 @@ export class UIController {
     this.valueNote.textContent = frame.valueNote
     this.sidebar.dataset.storyStep = `${Math.max(0, Math.min(3, frame.storyStep))}`
 
-    for (const stepNode of this.storySteps) {
+    for (const stepNode of this.storyNodes) {
       const rawStep = Number.parseInt(stepNode.dataset.step ?? '', 10)
       const step = Number.isFinite(rawStep) ? rawStep : -1
       stepNode.classList.toggle('active', step === frame.storyStep)
       stepNode.classList.toggle('completed', step < frame.storyStep)
     }
+
+    frame.storyNodeLines.forEach((line, index) => {
+      const target = this.storyNodeLines[index]
+      if (target) {
+        target.textContent = line
+      }
+    })
 
     this.impactCorrection.textContent = frame.impactCorrectionText
     this.impactRisk.textContent = frame.impactRiskText

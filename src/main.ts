@@ -422,6 +422,9 @@ function buildOutcomeFrame(
 ): OutcomeFrameUi {
   const activeProgress = clamp(teachingProgress)
   const duringStory = mode === 'geometry' && activeProgress < 1
+  const incidentRawPerHour = Math.max(0, Math.round((evaluation.queueRawPeak / 13) * 10) / 10)
+  const incidentSafePerHour = Math.max(0, Math.round((evaluation.queueSafePeak / 13) * 10) / 10)
+  const incidentDelta = Math.round((incidentRawPerHour - incidentSafePerHour) * 10) / 10
 
   const dominantActiveId = evaluation.projection.activeSetIds
     .slice()
@@ -441,9 +444,19 @@ function buildOutcomeFrame(
   let guideStep = 'NOW: Continuous Evaluation'
   let guideTitle = 'SafePatch is continuously evaluating safety and retained value.'
   let guideResult = `Current recommendation: ${evaluation.decisionTone.toUpperCase()}.`
+  let guideMetric =
+    incidentDelta >= 0
+      ? `Projected incident reduction: ${incidentDelta.toFixed(1)} /hr`
+      : `Projected incident increase: ${Math.abs(incidentDelta).toFixed(1)} /hr`
   let valueTitle = 'Net release impact'
   let valueMetric = `${Math.round((incidentSafePerHourSafe(evaluation) - incidentRawPerHourSafe(evaluation)) * 10) / 10} /hr delta`
   let valueNote = 'SafePatch compares raw versus certifiable outcomes.'
+  let storyNodeLines: [string, string, string, string] = [
+    `Raw proposal set at (${evaluation.projection.step0.x.toFixed(2)}, ${evaluation.projection.step0.y.toFixed(2)}).`,
+    dominantLabel ? `Primary violation: ${dominantLabel}.` : 'No blocking violation detected.',
+    `Safety projection trims ${Math.round(evaluation.correctionNormRatio * 100)}% of movement.`,
+    `Decision: ${evaluation.decisionTone.toUpperCase()} with ${evaluation.checksSafePassed}/${evaluation.activeCheckCount} checks passing.`,
+  ]
 
   if (duringStory) {
     storyProgress = activeProgress
@@ -458,6 +471,13 @@ function buildOutcomeFrame(
       valueTitle = 'Raw direction under evaluation'
       valueMetric = `${incidentRawPerHourSafe(evaluation)} /hr projected`
       valueNote = 'No safety correction is applied yet.'
+      guideMetric = `Raw forecast: ${incidentRawPerHour.toFixed(1)} incidents /hr`
+      storyNodeLines = [
+        `Raw direction captured: (${evaluation.projection.step0.x.toFixed(2)}, ${evaluation.projection.step0.y.toFixed(2)}).`,
+        'Guardrail checks are being evaluated.',
+        'Projection not applied yet.',
+        'Decision pending until checks complete.',
+      ]
     } else if (activeProgress < 0.46) {
       storyStep = 1
       guideStep = 'NOW: Violation Detection'
@@ -473,6 +493,13 @@ function buildOutcomeFrame(
       valueTitle = 'Raw direction is unsafe'
       valueMetric = `${incidentRawPerHourSafe(evaluation)} /hr if shipped raw`
       valueNote = 'Risk exceeds certified envelope.'
+      guideMetric = dominantLabel ? `Blocking guardrail: ${dominantLabel}` : 'Blocking guardrail detected'
+      storyNodeLines = [
+        `Raw proposal still targets (${evaluation.projection.step0.x.toFixed(2)}, ${evaluation.projection.step0.y.toFixed(2)}).`,
+        dominantLabel ? `Violation confirmed on ${dominantLabel}.` : 'Violation confirmed on active guardrail.',
+        'System prepares correction vector.',
+        'Release remains HOLD until corrected.',
+      ]
     } else if (activeProgress < 0.72) {
       storyStep = 2
       guideStep = 'NOW: Safety Projection'
@@ -484,6 +511,13 @@ function buildOutcomeFrame(
       valueTitle = 'Safety correction in progress'
       valueMetric = `${Math.round(evaluation.correctionNormRatio * 100)}% trimmed`
       valueNote = `Still retaining ${Math.round(evaluation.retainedGain * 100)}% intended fix value.`
+      guideMetric = `Trim applied: ${Math.round(evaluation.correctionNormRatio * 100)}%`
+      storyNodeLines = [
+        `Raw proposal kept visible as Δ0.`,
+        dominantLabel ? `${dominantLabel} pushes back on unsafe component.` : 'Active guardrails push back on unsafe component.',
+        `Projected Δ* now retains ${Math.round(evaluation.retainedGain * 100)}% useful gain.`,
+        'Decision recalculating with corrected direction.',
+      ]
     } else {
       storyStep = 3
       guideStep = 'NOW: Release Recommendation'
@@ -496,6 +530,16 @@ function buildOutcomeFrame(
       valueTitle = 'Certified net outcome'
       valueMetric = incidentDelta >= 0 ? `${incidentDelta.toFixed(1)} /hr prevented` : `${Math.abs(incidentDelta).toFixed(1)} /hr added`
       valueNote = `Certified patch keeps ${Math.round(evaluation.retainedGain * 100)}% of intended fix value.`
+      guideMetric =
+        incidentDelta >= 0
+          ? `Certified reduction: ${incidentDelta.toFixed(1)} incidents /hr`
+          : `Certified increase: ${Math.abs(incidentDelta).toFixed(1)} incidents /hr`
+      storyNodeLines = [
+        `Raw Δ0 would trigger ${incidentRawPerHour.toFixed(1)} incidents /hr.`,
+        `${evaluation.checksRawPassed}/${evaluation.activeCheckCount} checks pass before correction.`,
+        `Safe Δ* trims ${Math.round(evaluation.correctionNormRatio * 100)}% and keeps ${Math.round(evaluation.retainedGain * 100)}%.`,
+        `Final decision: ${evaluation.decisionTone.toUpperCase()} (${evaluation.readiness}/100 confidence).`,
+      ]
     }
   } else if (mode === 'forces') {
     storyStep = 2
@@ -509,6 +553,13 @@ function buildOutcomeFrame(
     valueTitle = 'Which blocker matters most?'
     valueMetric = dominantLabel ? `${dominantLabel}` : 'No active blocker'
     valueNote = 'Use pressure bars to inspect one correction component at a time.'
+    guideMetric = dominantLabel ? `Top pressure λ: ${dominantLambda.toFixed(3)}` : 'No active λ pressure'
+    storyNodeLines = [
+      `Raw Δ0 = (${evaluation.projection.step0.x.toFixed(2)}, ${evaluation.projection.step0.y.toFixed(2)}).`,
+      dominantLabel ? `Active blocker: ${dominantLabel}.` : 'No blocker currently active.',
+      'Click a pressure bar to isolate one correction arrow.',
+      `Decision remains ${evaluation.decisionTone.toUpperCase()} during inspection.`,
+    ]
   } else if (!dragging) {
     storyStep = 3
     storyProgress = 1
@@ -522,6 +573,13 @@ function buildOutcomeFrame(
     valueTitle = 'Current certified outcome'
     valueMetric = incidentDelta >= 0 ? `${incidentDelta.toFixed(1)} /hr prevented` : `${Math.abs(incidentDelta).toFixed(1)} /hr added`
     valueNote = `Retains ${Math.round(evaluation.retainedGain * 100)}% of intended fix value.`
+    guideMetric = `${evaluation.checksSafePassed}/${evaluation.activeCheckCount} checks certified`
+    storyNodeLines = [
+      `Latest raw proposal: (${evaluation.projection.step0.x.toFixed(2)}, ${evaluation.projection.step0.y.toFixed(2)}).`,
+      dominantLabel ? `Most sensitive guardrail: ${dominantLabel}.` : 'No strong blocker currently active.',
+      `Certified patch keeps ${Math.round(evaluation.retainedGain * 100)}% useful gain.`,
+      `Ready state: ${evaluation.decisionTone.toUpperCase()} (${evaluation.readiness}/100).`,
+    ]
   }
 
   let stageCaption: string
@@ -540,10 +598,6 @@ function buildOutcomeFrame(
     stageCaption = 'Red is proposal. Blue is the certifiable patch.'
   }
 
-  const incidentRawPerHour = Math.max(0, Math.round((evaluation.queueRawPeak / 13) * 10) / 10)
-  const incidentSafePerHour = Math.max(0, Math.round((evaluation.queueSafePeak / 13) * 10) / 10)
-  const incidentDelta = Math.round((incidentRawPerHour - incidentSafePerHour) * 10) / 10
-
   return {
     decisionTone: evaluation.decisionTone,
     decisionTitle: evaluation.decisionTitle,
@@ -556,11 +610,13 @@ function buildOutcomeFrame(
     guideStep,
     guideTitle,
     guideResult,
+    guideMetric,
     storyProgress,
     storyStep,
     storyTitle,
     storyCause,
     storyEffect,
+    storyNodeLines,
     valueTitle,
     valueMetric,
     valueNote,
