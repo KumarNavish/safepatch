@@ -69,6 +69,11 @@ function easeOutBack(value: number): number {
   return 1 + c3 * (t - 1) ** 3 + c1 * (t - 1) ** 2
 }
 
+function easeInOutSine(value: number): number {
+  const t = clamp(value)
+  return -(Math.cos(Math.PI * t) - 1) / 2
+}
+
 function phaseWindow(progress: number, start: number, end: number): number {
   if (end <= start) {
     return progress >= end ? 1 : 0
@@ -152,7 +157,7 @@ export class SceneRenderer {
     }
 
     this.ctx.clearRect(0, 0, width, height)
-    this.drawBackdrop(width, height)
+    this.drawBackdrop(width, height, input.clockMs)
 
     const frame: Rect = {
       x: 10,
@@ -182,11 +187,12 @@ export class SceneRenderer {
     this.labelBoxes = []
 
     const beats = this.resolveTeachingBeats(input.teachingProgress)
+    const teachingMode = input.teachingProgress < 0.999
     const activeSet = new Set(input.projection.activeSetIds)
     const visibleSet = new Set(input.visibleCorrectionIds)
     const primaryDiagnostic = this.primaryViolatedDiagnostic(input.projection)
 
-    this.drawStageSurface(plotRect)
+    this.drawStageSurface(plotRect, input.clockMs)
     this.drawFeasibleRegion(activeHalfspaces, mapper)
 
     this.drawBoundaries({
@@ -198,6 +204,7 @@ export class SceneRenderer {
       highlightedConstraintId: input.highlightedConstraintId,
       primaryDiagnostic,
       hitBeat: beats.hit,
+      clockMs: input.clockMs,
     })
 
     if (input.dragActive && input.mode === 'geometry') {
@@ -211,8 +218,10 @@ export class SceneRenderer {
         mapper,
         beats,
         dragActive: input.dragActive,
+        teachingMode,
         primaryDiagnostic,
         pulse: 0.5 + 0.5 * Math.sin(input.clockMs * 0.0052),
+        clockMs: input.clockMs,
       })
     } else {
       this.drawForcesMode({
@@ -220,6 +229,7 @@ export class SceneRenderer {
         mapper,
         visibleSet,
         highlightedConstraintId: input.highlightedConstraintId,
+        clockMs: input.clockMs,
       })
     }
 
@@ -260,11 +270,19 @@ export class SceneRenderer {
     }
   }
 
-  private drawBackdrop(width: number, height: number): void {
+  private drawBackdrop(width: number, height: number, clockMs: number): void {
     const gradient = this.ctx.createLinearGradient(0, 0, 0, height)
     gradient.addColorStop(0, '#ffffff')
     gradient.addColorStop(1, '#f9fbff')
     this.ctx.fillStyle = gradient
+    this.ctx.fillRect(0, 0, width, height)
+
+    const focusX = width * (0.18 + 0.04 * Math.sin(clockMs * 0.00055))
+    const focusY = height * (0.12 + 0.02 * Math.cos(clockMs * 0.0006))
+    const glow = this.ctx.createRadialGradient(focusX, focusY, 10, focusX, focusY, width * 0.42)
+    glow.addColorStop(0, 'rgba(29, 78, 216, 0.08)')
+    glow.addColorStop(1, 'rgba(29, 78, 216, 0)')
+    this.ctx.fillStyle = glow
     this.ctx.fillRect(0, 0, width, height)
   }
 
@@ -284,11 +302,20 @@ export class SceneRenderer {
     }
   }
 
-  private drawStageSurface(rect: Rect): void {
+  private drawStageSurface(rect: Rect, clockMs: number): void {
     const gradient = this.ctx.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.height)
     gradient.addColorStop(0, '#ffffff')
     gradient.addColorStop(1, '#fbfdff')
     this.ctx.fillStyle = gradient
+    this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
+
+    const sweep = ((clockMs * 0.04) % (rect.width + 160)) - 80
+    const beamX = rect.x + sweep
+    const beam = this.ctx.createLinearGradient(beamX - 120, rect.y, beamX + 120, rect.y)
+    beam.addColorStop(0, 'rgba(29, 78, 216, 0)')
+    beam.addColorStop(0.5, 'rgba(29, 78, 216, 0.06)')
+    beam.addColorStop(1, 'rgba(29, 78, 216, 0)')
+    this.ctx.fillStyle = beam
     this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
 
     this.ctx.beginPath()
@@ -370,6 +397,7 @@ export class SceneRenderer {
     highlightedConstraintId: string | null
     primaryDiagnostic: ConstraintDiagnostic | null
     hitBeat: number
+    clockMs: number
   }): void {
     const span = input.mapper.worldRadius * 1.85
 
@@ -413,12 +441,18 @@ export class SceneRenderer {
         width = 2.1
       }
 
+      this.ctx.save()
+      if (isPrimary && input.mode === 'geometry') {
+        this.ctx.setLineDash([8, 5])
+        this.ctx.lineDashOffset = -input.clockMs * 0.025
+      }
       this.ctx.beginPath()
       this.ctx.moveTo(p0.x, p0.y)
       this.ctx.lineTo(p1.x, p1.y)
       this.ctx.strokeStyle = stroke
       this.ctx.lineWidth = width
       this.ctx.stroke()
+      this.ctx.restore()
 
       if (input.mode === 'forces' && input.highlightedConstraintId === halfspace.id) {
         const labelAnchor = input.mapper.worldToCanvas(add(anchor, scale(normal, 0.06 * input.mapper.worldRadius)))
@@ -438,8 +472,10 @@ export class SceneRenderer {
     mapper: Mapper
     beats: TeachingBeats
     dragActive: boolean
+    teachingMode: boolean
     primaryDiagnostic: ConstraintDiagnostic | null
     pulse: number
+    clockMs: number
   }): void {
     const originWorld = vec(0, 0)
     const rawWorld = input.projection.step0
@@ -452,6 +488,7 @@ export class SceneRenderer {
     this.drawArrow(origin, rawVisible, RAW_COLOR, 2.5, false, true)
     this.drawNode(origin, '#7292b8', 3.8)
     this.drawNode(rawVisible, RAW_COLOR, 4)
+    this.drawTravelDot(origin, rawVisible, (input.clockMs * 0.0013) % 1, RAW_COLOR, 3)
 
     let hitCanvas: Vec2 | null = null
 
@@ -460,14 +497,8 @@ export class SceneRenderer {
       if (boundaryHit) {
         hitCanvas = input.mapper.worldToCanvas(boundaryHit)
 
-        const ringRadius = 8 + input.beats.hit * 8 + input.pulse * 1.7
-        this.ctx.beginPath()
-        this.ctx.arc(hitCanvas.x, hitCanvas.y, ringRadius, 0, Math.PI * 2)
-        this.ctx.strokeStyle = withAlpha(PUSH_COLOR, 0.3 + input.beats.hit * 0.45)
-        this.ctx.lineWidth = 1.4
-        this.ctx.stroke()
-
-        if (!input.dragActive) {
+        if (input.teachingMode) {
+          this.drawImpactBurst(hitCanvas, input.beats.hit, input.pulse, PUSH_COLOR)
           this.drawLabel({
             anchor: hitCanvas,
             text: 'policy wall',
@@ -485,12 +516,19 @@ export class SceneRenderer {
         input.mapper.worldToCanvas(rawWorld),
         input.mapper.worldToCanvas(correctionVisible),
         PUSH_COLOR,
-        1.9,
+        input.teachingMode ? 1.9 : 1.45,
         true,
-        true,
+        input.teachingMode,
+      )
+      this.drawTravelDot(
+        input.mapper.worldToCanvas(rawWorld),
+        input.mapper.worldToCanvas(correctionVisible),
+        (input.clockMs * 0.0016) % 1,
+        PUSH_COLOR,
+        2.8,
       )
 
-      if (hitCanvas) {
+      if (hitCanvas && input.teachingMode) {
         const normalTip = input.mapper.worldToCanvas(
           add(input.mapper.canvasToWorld(hitCanvas), scale(normalize(input.primaryDiagnostic?.normal ?? vec(0, 0)), 0.16)),
         )
@@ -503,6 +541,10 @@ export class SceneRenderer {
       const safeVisible = input.mapper.worldToCanvas(safeVisibleWorld)
       this.drawArrow(origin, safeVisible, SAFE_COLOR, 2.6, false, true)
       this.drawNode(safeVisible, SAFE_COLOR, 4)
+      this.drawTravelDot(origin, safeVisible, (input.clockMs * 0.0015 + 0.2) % 1, SAFE_COLOR, 3.1)
+      if (input.teachingMode && input.beats.safe > 0.8) {
+        this.drawApprovalBadge(safeVisible, easeInOutSine((input.beats.safe - 0.8) / 0.2))
+      }
     }
 
     this.drawLabel({
@@ -527,6 +569,7 @@ export class SceneRenderer {
     mapper: Mapper
     visibleSet: Set<string>
     highlightedConstraintId: string | null
+    clockMs: number
   }): void {
     const origin = input.mapper.worldToCanvas(vec(0, 0))
     const rawTip = input.mapper.worldToCanvas(input.projection.step0)
@@ -535,12 +578,14 @@ export class SceneRenderer {
     this.drawArrow(origin, rawTip, RAW_COLOR, 2.3, false, true)
     this.drawNode(origin, '#7292b8', 3.8)
     this.drawNode(rawTip, RAW_COLOR, 4)
+    this.drawTravelDot(origin, rawTip, (input.clockMs * 0.0012) % 1, RAW_COLOR, 3)
 
     const activeIds = input.projection.activeSetIds
       .slice()
       .sort((a, b) => (input.projection.lambdaById[b] ?? 0) - (input.projection.lambdaById[a] ?? 0))
 
     let cursor = input.projection.step0
+    let activeIndex = 0
 
     for (const id of activeIds) {
       const lambda = input.projection.lambdaById[id] ?? 0
@@ -563,6 +608,13 @@ export class SceneRenderer {
           !isFocused,
           true,
         )
+        this.drawTravelDot(
+          input.mapper.worldToCanvas(cursor),
+          input.mapper.worldToCanvas(next),
+          (input.clockMs * 0.0014 + activeIndex * 0.17) % 1,
+          color,
+          isFocused ? 3 : 2.4,
+        )
 
         if (isFocused) {
           this.drawLabel({
@@ -576,11 +628,13 @@ export class SceneRenderer {
       }
 
       cursor = next
+      activeIndex += 1
     }
 
     this.drawArrow(origin, safeTip, SAFE_COLOR, 2.6, false, true)
     this.drawArrow(rawTip, safeTip, withAlpha(SAFE_COLOR, 0.42), 1.3, true, false)
     this.drawNode(safeTip, SAFE_COLOR, 4)
+    this.drawTravelDot(origin, safeTip, (input.clockMs * 0.0015 + 0.3) % 1, SAFE_COLOR, 3.1)
 
     this.drawLabel({
       anchor: rawTip,
@@ -597,6 +651,77 @@ export class SceneRenderer {
       preferredDx: 10,
       preferredDy: 8,
     })
+  }
+
+  private drawTravelDot(from: Vec2, to: Vec2, progress: number, color: string, radius: number): void {
+    const distance = Math.hypot(to.x - from.x, to.y - from.y)
+    if (distance < 4) {
+      return
+    }
+
+    const point = lerp(from, to, clamp(progress))
+    this.ctx.beginPath()
+    this.ctx.arc(point.x, point.y, radius + 2.2, 0, Math.PI * 2)
+    this.ctx.fillStyle = withAlpha(color, 0.18)
+    this.ctx.fill()
+
+    this.ctx.beginPath()
+    this.ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
+    this.ctx.fillStyle = withAlpha(color, 0.92)
+    this.ctx.fill()
+  }
+
+  private drawImpactBurst(center: Vec2, hitBeat: number, pulse: number, color: string): void {
+    const intensity = easeOutCubic(hitBeat)
+    const maxRadius = 8 + intensity * 12 + pulse * 2
+
+    for (let i = 0; i < 3; i += 1) {
+      const phase = i / 3
+      const radius = maxRadius * (0.55 + phase * 0.45)
+      this.ctx.beginPath()
+      this.ctx.arc(center.x, center.y, radius, 0, Math.PI * 2)
+      this.ctx.strokeStyle = withAlpha(color, 0.24 - phase * 0.08)
+      this.ctx.lineWidth = 1.2 - phase * 0.3
+      this.ctx.stroke()
+    }
+
+    const rayLength = 8 + intensity * 9
+    for (let ray = 0; ray < 6; ray += 1) {
+      const angle = (Math.PI * 2 * ray) / 6 + pulse * 0.15
+      this.ctx.beginPath()
+      this.ctx.moveTo(center.x + Math.cos(angle) * 4, center.y + Math.sin(angle) * 4)
+      this.ctx.lineTo(center.x + Math.cos(angle) * rayLength, center.y + Math.sin(angle) * rayLength)
+      this.ctx.strokeStyle = withAlpha(color, 0.2)
+      this.ctx.lineWidth = 1
+      this.ctx.stroke()
+    }
+  }
+
+  private drawApprovalBadge(anchor: Vec2, alpha: number): void {
+    const opacity = clamp(alpha)
+    if (opacity <= 0.01) {
+      return
+    }
+
+    const x = anchor.x + 18
+    const y = anchor.y - 18
+    this.drawRoundedRect(x - 11, y - 9, 22, 18, 6)
+    this.ctx.fillStyle = `rgba(15, 143, 116, ${0.16 * opacity})`
+    this.ctx.fill()
+    this.ctx.strokeStyle = `rgba(15, 143, 116, ${0.6 * opacity})`
+    this.ctx.lineWidth = 1
+    this.ctx.stroke()
+
+    this.ctx.save()
+    this.ctx.strokeStyle = `rgba(15, 143, 116, ${0.92 * opacity})`
+    this.ctx.lineWidth = 1.8
+    this.ctx.lineCap = 'round'
+    this.ctx.beginPath()
+    this.ctx.moveTo(x - 4.5, y + 0.5)
+    this.ctx.lineTo(x - 1, y + 4)
+    this.ctx.lineTo(x + 5, y - 3)
+    this.ctx.stroke()
+    this.ctx.restore()
   }
 
   private drawArrow(from: Vec2, to: Vec2, color: string, width: number, dashed: boolean, glow: boolean): void {
