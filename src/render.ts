@@ -24,13 +24,6 @@ interface Rect {
   height: number
 }
 
-interface LabelBox {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
 interface Mapper {
   worldRadius: number
   center: Vec2
@@ -50,8 +43,6 @@ const SAFE_COLOR = '#1d4ed8'
 const PUSH_COLOR = '#f09b26'
 const FEASIBLE_FILL = 'rgba(15, 143, 116, 0.11)'
 const FEASIBLE_STROKE = 'rgba(15, 143, 116, 0.5)'
-const LABEL_BG = 'rgba(255, 255, 255, 0.96)'
-const LABEL_BORDER = 'rgba(177, 193, 216, 0.72)'
 
 function clamp(value: number, min = 0, max = 1): number {
   return Math.min(Math.max(value, min), max)
@@ -89,10 +80,6 @@ function withAlpha(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
-function boxesOverlap(a: LabelBox, b: LabelBox): boolean {
-  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
-}
-
 export class SceneRenderer {
   private readonly canvas: HTMLCanvasElement
   private readonly ctx: CanvasRenderingContext2D
@@ -100,7 +87,6 @@ export class SceneRenderer {
   private readonly palette = ['#ec6b8e', '#3f8bff', '#15a392', '#f4a236', '#7657da', '#0ea5a4']
 
   private mapper: Mapper | null = null
-  private labelBoxes: LabelBox[] = []
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -175,7 +161,6 @@ export class SceneRenderer {
     const mapper = this.createMapper(plotRect, activeHalfspaces)
 
     this.mapper = mapper
-    this.labelBoxes = []
 
     const beats = this.resolveTeachingBeats(input.teachingProgress)
     const teachingMode = input.teachingProgress < 0.999
@@ -304,15 +289,6 @@ export class SceneRenderer {
     this.ctx.strokeStyle = FEASIBLE_STROKE
     this.ctx.lineWidth = 1.4
     this.ctx.stroke()
-
-    const anchor = mapper.worldToCanvas(vec(0.03 * mapper.worldRadius, -0.08 * mapper.worldRadius))
-    this.drawLabel({
-      anchor,
-      text: 'ship-safe zone',
-      color: '#0f8f74',
-      preferredDx: 10,
-      preferredDy: 10,
-    })
   }
 
   private drawBoundaries(input: {
@@ -374,17 +350,6 @@ export class SceneRenderer {
       this.ctx.strokeStyle = stroke
       this.ctx.lineWidth = width
       this.ctx.stroke()
-
-      if (isHighlighted) {
-        const labelAnchor = input.mapper.worldToCanvas(add(anchor, scale(normal, 0.06 * input.mapper.worldRadius)))
-        this.drawLabel({
-          anchor: labelAnchor,
-          text: halfspace.label,
-          color: baseColor,
-          preferredDx: 10,
-          preferredDy: -18,
-        })
-      }
     })
   }
 
@@ -412,32 +377,12 @@ export class SceneRenderer {
       if (boundaryHit) {
         const hitCanvas = input.mapper.worldToCanvas(boundaryHit)
         this.drawPulseRing(hitCanvas, PUSH_COLOR, input.beats.hit)
-
-        if (input.beats.hit > 0.4) {
-          this.drawLabel({
-            anchor: hitCanvas,
-            text: 'guardrail hit',
-            color: PUSH_COLOR,
-            preferredDx: 10,
-            preferredDy: -28,
-          })
-        }
       }
     }
 
     if (input.beats.correction > 0.02) {
       const correctionVisible = input.mapper.worldToCanvas(lerp(rawWorld, safeWorld, input.beats.correction))
       this.drawArrow(input.mapper.worldToCanvas(rawWorld), correctionVisible, PUSH_COLOR, 1.8, false, false)
-
-      if (input.beats.correction > 0.55) {
-        this.drawLabel({
-          anchor: lerp(input.mapper.worldToCanvas(rawWorld), correctionVisible, 0.5),
-          text: 'safety correction',
-          color: PUSH_COLOR,
-          preferredDx: 10,
-          preferredDy: -16,
-        })
-      }
     }
 
     if (input.beats.safe > 0.02) {
@@ -447,30 +392,9 @@ export class SceneRenderer {
     }
 
     const rawTip = input.mapper.worldToCanvas(rawWorld)
-    const safeTip = input.mapper.worldToCanvas(safeWorld)
 
     if (!input.dragActive) {
       this.drawHandleHint(rawTip)
-    }
-
-    if (input.beats.raw > 0.7 || !input.teachingMode) {
-      this.drawLabel({
-        anchor: rawTip,
-        text: 'proposed patch',
-        color: RAW_COLOR,
-        preferredDx: 10,
-        preferredDy: 12,
-      })
-    }
-
-    if (input.beats.safe > 0.62 || !input.teachingMode) {
-      this.drawLabel({
-        anchor: safeTip,
-        text: 'certified patch',
-        color: SAFE_COLOR,
-        preferredDx: 10,
-        preferredDy: -18,
-      })
     }
   }
 
@@ -500,33 +424,8 @@ export class SceneRenderer {
         const selectedColor = this.colorForConstraint(selectedId)
         const correctionTip = input.mapper.worldToCanvas(add(input.projection.step0, correction))
         this.drawArrow(rawTip, correctionTip, selectedColor, 2.2, false, false)
-
-        const selectedLabel = input.projection.diagnostics.find((diagnostic) => diagnostic.id === selectedId)?.label ?? selectedId
-        this.drawLabel({
-          anchor: lerp(rawTip, correctionTip, 0.5),
-          text: `${selectedLabel} (pressure ${lambda.toFixed(3)})`,
-          color: selectedColor,
-          preferredDx: 10,
-          preferredDy: -20,
-        })
       }
     }
-
-    this.drawLabel({
-      anchor: rawTip,
-      text: 'proposed patch',
-      color: RAW_COLOR,
-      preferredDx: 10,
-      preferredDy: -18,
-    })
-
-    this.drawLabel({
-      anchor: safeTip,
-      text: 'certified patch',
-      color: SAFE_COLOR,
-      preferredDx: 10,
-      preferredDy: 8,
-    })
   }
 
   private drawPulseRing(center: Vec2, color: string, progress: number): void {
@@ -612,63 +511,6 @@ export class SceneRenderer {
     this.ctx.strokeStyle = withAlpha(color, 0.22)
     this.ctx.lineWidth = 1
     this.ctx.stroke()
-  }
-
-  private drawLabel(input: {
-    anchor: Vec2
-    text: string
-    color: string
-    preferredDx: number
-    preferredDy: number
-  }): void {
-    this.ctx.font = '600 10px "Sora", sans-serif'
-    const textWidth = this.ctx.measureText(input.text).width
-    const width = Math.ceil(textWidth + 12)
-    const height = 18
-
-    const candidates = [
-      { dx: input.preferredDx, dy: input.preferredDy },
-      { dx: input.preferredDx, dy: input.preferredDy - 18 },
-      { dx: input.preferredDx, dy: input.preferredDy + 18 },
-      { dx: input.preferredDx + 18, dy: input.preferredDy },
-      { dx: input.preferredDx - 18, dy: input.preferredDy },
-      { dx: input.preferredDx + 22, dy: input.preferredDy - 14 },
-      { dx: input.preferredDx - 22, dy: input.preferredDy + 14 },
-    ]
-
-    let chosen: LabelBox | null = null
-
-    for (const candidate of candidates) {
-      const x = clamp(input.anchor.x + candidate.dx, 6, this.canvas.clientWidth - width - 6)
-      const y = clamp(input.anchor.y + candidate.dy, 6, this.canvas.clientHeight - height - 6)
-      const box: LabelBox = { x, y, width, height }
-
-      const intersects = this.labelBoxes.some((existing) => boxesOverlap(existing, box))
-      if (!intersects) {
-        chosen = box
-        break
-      }
-
-      if (!chosen) {
-        chosen = box
-      }
-    }
-
-    if (!chosen) {
-      return
-    }
-
-    this.labelBoxes.push(chosen)
-
-    this.drawRoundedRect(chosen.x, chosen.y, chosen.width, chosen.height, 5)
-    this.ctx.fillStyle = LABEL_BG
-    this.ctx.fill()
-    this.ctx.strokeStyle = LABEL_BORDER
-    this.ctx.lineWidth = 0.8
-    this.ctx.stroke()
-
-    this.ctx.fillStyle = withAlpha(input.color, 0.95)
-    this.ctx.fillText(input.text, chosen.x + 6, chosen.y + 12)
   }
 
   private primaryViolatedDiagnostic(projection: ProjectionResult): ConstraintDiagnostic | null {

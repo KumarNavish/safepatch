@@ -22,36 +22,29 @@
         <p class="eyebrow">SafePatch</p>
         <h1>Will this hotfix ship safely?</h1>
         <p class="hero-copy">
-          Drag the red proposal. SafePatch immediately returns the nearest certifiable blue patch and explains whether you
-          should ship or hold.
+          Drag the red proposal. SafePatch continuously projects it to a certifiable blue patch and updates ship/hold in
+          real time.
         </p>
       </header>
 
       <section class="product-shell" aria-label="SafePatch studio">
         <section class="stage-card" aria-label="Interactive projection stage">
-          <div class="stage-top">
-            <p id="stage-caption" class="stage-caption">
-              Drag the red endpoint. Blue updates continuously to the certifiable release direction.
-            </p>
-            <div class="stage-key" aria-label="Canvas legend">
-              <span class="key-item"><i class="key-dot proposed"></i>Proposed</span>
-              <span class="key-item"><i class="key-dot correction"></i>Correction</span>
-              <span class="key-item"><i class="key-dot certified"></i>Certified</span>
-            </div>
-          </div>
+          <p id="stage-caption" class="stage-caption">
+            Drag the red endpoint. The blue endpoint shows what can actually be shipped safely.
+          </p>
 
           <canvas id="scene-canvas" class="scene-canvas" aria-label="Patch proposal and policy correction visualization"></canvas>
 
-          <p id="drag-hint" class="drag-hint">Drag the red patch endpoint to simulate a real release proposal.</p>
+          <p id="drag-hint" class="drag-hint">Drag the red patch endpoint to test a release direction.</p>
         </section>
 
         <aside class="sidebar" aria-label="Decision and controls">
           <article class="control-pane">
-            <p class="panel-kicker">Traffic Condition</p>
+            <p class="panel-kicker">Scenario</p>
             <div class="preset-row" role="group" aria-label="Traffic scenario presets">
-              <button class="preset-btn" data-preset="normal" data-pressure="0.24" type="button">Business Usual</button>
-              <button class="preset-btn active" data-preset="spike" data-pressure="0.56" type="button">Peak Traffic</button>
-              <button class="preset-btn" data-preset="incident" data-pressure="0.9" type="button">Live Incident</button>
+              <button class="preset-btn" data-preset="normal" data-pressure="0.24" type="button">Normal</button>
+              <button class="preset-btn active" data-preset="spike" data-pressure="0.56" type="button">Spike</button>
+              <button class="preset-btn" data-preset="incident" data-pressure="0.9" type="button">Incident</button>
             </div>
             <p id="preset-note" class="preset-note">Peak traffic: release decisions need stronger policy correction.</p>
 
@@ -64,55 +57,59 @@
             </section>
           </article>
 
-          <article id="decision-panel" class="decision-surface hold">
-            <p id="decision-pill" class="decision-pill hold">HOLD</p>
-            <h2 id="decision-title">Hold: current direction is unsafe</h2>
-            <p id="decision-detail">Adjust the patch direction until all policies pass with acceptable rollout impact.</p>
-          </article>
-
-          <section class="metric-grid" aria-label="Key metrics">
-            <article class="metric-card">
-              <p class="metric-label">Policies Passed</p>
-              <strong id="checks-passed" class="metric-value">--</strong>
-              <p id="readiness-note" class="metric-note">Release confidence: --</p>
-            </article>
-
-            <article class="metric-card">
-              <p class="metric-label">Incident Forecast</p>
-              <strong id="queue-peak" class="metric-value">--</strong>
-              <p class="metric-note">Raw vs certified</p>
-            </article>
-
-            <article class="metric-card">
-              <p class="metric-label">Fix Value Retained</p>
-              <strong id="retained-value" class="metric-value">--</strong>
-              <p class="metric-note">Benefit kept after safety correction</p>
-            </article>
-          </section>
-
-          <section class="impact-strip" aria-label="Immediate impact">
-            <article class="impact-card">
-              <p class="impact-label">Patch Trimmed</p>
-              <strong id="impact-correction" class="impact-value">--</strong>
-            </article>
-            <article class="impact-card">
-              <p class="impact-label">Incidents Delta</p>
-              <strong id="impact-risk" class="impact-value">--</strong>
-            </article>
-            <article class="impact-card">
-              <p class="impact-label">Top Blocker</p>
-              <strong id="impact-blocker" class="impact-value impact-blocker">--</strong>
-            </article>
-          </section>
-
           <article class="control-pane mode-pane">
             <p class="panel-kicker">View</p>
             <div class="mode-toggle" role="group" aria-label="Visualization mode">
-              <button class="mode-btn active" data-mode="geometry" type="button">Release Preview</button>
-              <button class="mode-btn" data-mode="forces" type="button">Policy Forces</button>
+              <button class="mode-btn active" data-mode="geometry" type="button">Preview</button>
+              <button class="mode-btn" data-mode="forces" type="button">Forces</button>
             </div>
-            <button id="replay-button" class="replay-btn" type="button">Replay onboarding</button>
+            <button id="replay-button" class="replay-btn" type="button">Replay story</button>
           </article>
+
+          <article id="decision-panel" class="decision-surface hold">
+            <p id="decision-pill" class="decision-pill hold">HOLD</p>
+            <h2 id="decision-title">Hold: current direction is unsafe</h2>
+            <p id="decision-detail">Adjust direction until checks pass with acceptable rollout impact.</p>
+          </article>
+
+          <section class="signal-grid" aria-label="Live release signals">
+            <article class="signal-card">
+              <p class="signal-label">Safe checks</p>
+              <strong id="checks-passed" class="signal-value">--</strong>
+            </article>
+            <article class="signal-card">
+              <p class="signal-label">Incident load</p>
+              <strong id="queue-peak" class="signal-value">--</strong>
+            </article>
+            <article class="signal-card">
+              <p class="signal-label">Fix retained</p>
+              <strong id="retained-value" class="signal-value">--</strong>
+            </article>
+          </section>
+
+          <p id="readiness-note" class="readiness-note">Release confidence: --</p>
+
+          <section class="story-card" aria-label="Synchronized process playback">
+            <p class="panel-kicker">Process playback</p>
+            <div class="story-progress" aria-hidden="true">
+              <span id="story-progress-fill" class="story-progress-fill"></span>
+            </div>
+            <div class="story-steps" aria-hidden="true">
+              <span class="story-step" data-step="0">Proposal</span>
+              <span class="story-step" data-step="1">Violation</span>
+              <span class="story-step" data-step="2">Correction</span>
+              <span class="story-step" data-step="3">Decision</span>
+            </div>
+            <p id="story-title" class="story-title">Proposal simulation starts.</p>
+            <p id="story-cause" class="story-line">Cause: raw patch direction is evaluated against active guardrails.</p>
+            <p id="story-effect" class="story-line">Effect: ship/hold remains pending until correction completes.</p>
+
+            <div class="story-chips" aria-label="Internal signals">
+              <span class="story-chip">Trim <strong id="impact-correction">--</strong></span>
+              <span class="story-chip">Incidents <strong id="impact-risk">--</strong></span>
+              <span class="story-chip">Blocker <strong id="impact-blocker">--</strong></span>
+            </div>
+          </section>
 
           <section id="force-bars" class="force-bars" aria-label="Constraint correction strengths"></section>
         </aside>
@@ -151,7 +148,7 @@
           <div id="equation-main" class="equation"></div>
           <div id="equation-sub" class="equation equation-sub"></div>
           <div id="equation-terms" class="equation-terms"></div>
-          <p class="math-note">Each active term maps to one correction vector in Policy Forces view.</p>
+          <p class="math-note">Each active term maps to one correction vector in Forces view.</p>
         </section>
       </details>
     </main>

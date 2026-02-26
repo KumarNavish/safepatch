@@ -39,6 +39,11 @@ export interface OutcomeFrameUi {
   retainedText: string
   readinessText: string
   stageCaption: string
+  storyProgress: number
+  storyStep: number
+  storyTitle: string
+  storyCause: string
+  storyEffect: string
   impactCorrectionText: string
   impactRiskText: string
   impactBlockerText: string
@@ -77,6 +82,12 @@ export class UIController {
   private readonly impactCorrection: HTMLElement
   private readonly impactRisk: HTMLElement
   private readonly impactBlocker: HTMLElement
+
+  private readonly storyProgressFill: HTMLElement
+  private readonly storySteps: HTMLElement[]
+  private readonly storyTitle: HTMLElement
+  private readonly storyCause: HTMLElement
+  private readonly storyEffect: HTMLElement
 
   private readonly whyList: HTMLUListElement
   private readonly actionList: HTMLUListElement
@@ -124,6 +135,12 @@ export class UIController {
     this.impactCorrection = this.getElement('impact-correction')
     this.impactRisk = this.getElement('impact-risk')
     this.impactBlocker = this.getElement('impact-blocker')
+
+    this.storyProgressFill = this.getElement('story-progress-fill')
+    this.storySteps = Array.from(document.querySelectorAll<HTMLElement>('.story-step'))
+    this.storyTitle = this.getElement('story-title')
+    this.storyCause = this.getElement('story-cause')
+    this.storyEffect = this.getElement('story-effect')
 
     this.whyList = this.getElement<HTMLUListElement>('why-list')
     this.actionList = this.getElement<HTMLUListElement>('action-list')
@@ -240,8 +257,8 @@ export class UIController {
   setDragActive(active: boolean): void {
     this.dragHint.classList.toggle('active', active)
     this.dragHint.textContent = active
-      ? 'Dragging proposal: ship and hold decision is updating live.'
-      : 'Drag the red patch endpoint. SafePatch updates the safe patch and decision instantly.'
+      ? 'Dragging proposal: ship/hold is updating live.'
+      : 'Drag the red endpoint. Blue updates instantly to the safe direction.'
   }
 
   renderOutcome(frame: OutcomeFrameUi): void {
@@ -259,6 +276,18 @@ export class UIController {
     this.retainedValue.textContent = frame.retainedText
     this.readinessNote.textContent = frame.readinessText
     this.stageCaption.textContent = frame.stageCaption
+
+    this.storyProgressFill.style.width = `${Math.round(Math.min(Math.max(frame.storyProgress, 0), 1) * 100)}%`
+    this.storyTitle.textContent = frame.storyTitle
+    this.storyCause.textContent = frame.storyCause
+    this.storyEffect.textContent = frame.storyEffect
+
+    for (const stepNode of this.storySteps) {
+      const rawStep = Number.parseInt(stepNode.dataset.step ?? '', 10)
+      const step = Number.isFinite(rawStep) ? rawStep : -1
+      stepNode.classList.toggle('active', step === frame.storyStep)
+      stepNode.classList.toggle('completed', step < frame.storyStep)
+    }
 
     this.impactCorrection.textContent = frame.impactCorrectionText
     this.impactRisk.textContent = frame.impactRiskText
