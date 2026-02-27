@@ -441,42 +441,42 @@ function buildOutcomeFrame(
   let storyStep = 3
   let stageCaption = 'Red is raw proposal. Blue is certified patch.'
 
-  let nowTitle = 'Live decision'
-  let nowBody = 'SafePatch is continuously certifying the proposal against active guardrails.'
+  let insightText = 'SafePatch is continuously certifying the proposal against active guardrails.'
+  let insightTone: 'neutral' | 'warn' | 'good' = 'neutral'
 
   let impactLine =
     incidentDelta >= 0
       ? `${incidentDelta.toFixed(1)} incidents/hr avoided after certification.`
       : `${Math.abs(incidentDelta).toFixed(1)} incidents/hr added even after certification.`
-  nowBody = `${nowBody} Decision: ${evaluation.decisionTone.toUpperCase()}.`
+  insightText = `${insightText} Decision: ${evaluation.decisionTone.toUpperCase()}.`
 
   if (duringStory) {
     if (progress < 0.28) {
       storyStep = 0
-      nowTitle = 'Intake raw proposal'
-      nowBody = 'The system reads your candidate fix direction before any safety correction.'
+      insightText = 'Intake: reading the raw proposal before any correction.'
+      insightTone = 'neutral'
       stageCaption = 'Step 1: intake raw proposal.'
       impactLine = `Raw forecast: ${incidentRaw.toFixed(1)} incidents/hr if shipped directly.`
     } else if (progress < 0.46) {
       storyStep = 1
-      nowTitle = 'Detect guardrail risk'
-      nowBody = dominantLabel
+      insightText = dominantLabel
         ? `Raw proposal crosses guardrail "${dominantLabel}".`
         : 'Raw proposal crosses at least one active guardrail.'
+      insightTone = 'warn'
       stageCaption = 'Step 2: violation detected and highlighted.'
       impactLine = dominantLabel
         ? `Blocker identified: ${dominantLabel}.`
         : 'Blocker identified from active guardrails.'
     } else if (progress < 0.72) {
       storyStep = 2
-      nowTitle = 'Project certified patch'
-      nowBody = 'SafePatch removes only the unsafe component while preserving useful movement.'
+      insightText = 'Projection removes only the unsafe component.'
+      insightTone = 'neutral'
       stageCaption = 'Step 3: unsafe component is removed.'
       impactLine = `Certification keeps ${Math.round(evaluation.retainedGain * 100)}% useful gain.`
     } else {
       storyStep = 3
-      nowTitle = 'Recommend release action'
-      nowBody = 'Certified patch is scored for policy compliance and operational impact.'
+      insightText = `Recommendation ready: ${evaluation.decisionTone.toUpperCase()}.`
+      insightTone = evaluation.decisionTone === 'ship' ? 'good' : 'warn'
       stageCaption = 'Step 4: certified patch and recommendation.'
       impactLine =
         incidentDelta >= 0
@@ -485,16 +485,16 @@ function buildOutcomeFrame(
     }
   } else if (mode === 'forces') {
     storyStep = 2
-    nowTitle = 'Inspect correction forces'
-    nowBody = 'Each active guardrail contributes a correction component.'
+    insightText = 'Forces view: each active guardrail contributes one correction component.'
+    insightTone = 'neutral'
     stageCaption = 'Forces view: inspect how each guardrail bends the proposal.'
     impactLine = dominantLabel
       ? `Click bars to isolate ${dominantLabel} contribution.`
       : 'No active forces. Proposal is already safe.'
   } else if (dragging) {
     storyStep = 3
-    nowTitle = 'Live interactive certification'
-    nowBody = 'As you drag, SafePatch continuously recomputes a certifiable patch.'
+    insightText = `Live update: ${evaluation.decisionTone.toUpperCase()} while dragging.`
+    insightTone = evaluation.decisionTone === 'ship' ? 'good' : 'warn'
     stageCaption = `Live update: trim ${Math.round(evaluation.correctionNormRatio * 100)}% while dragging.`
     impactLine =
       incidentDelta >= 0
@@ -507,8 +507,8 @@ function buildOutcomeFrame(
     decisionTitle: evaluation.decisionTitle,
     decisionDetail: evaluation.decisionDetail,
     readinessText: `Release confidence: ${evaluation.readiness}/100`,
-    nowTitle,
-    nowBody,
+    insightText,
+    insightTone,
     checksText: `${evaluation.checksSafePassed}/${evaluation.activeCheckCount}`,
     incidentText: `${incidentSafe}/hr (raw ${incidentRaw}/hr)`,
     retainedText: `${Math.round(evaluation.retainedGain * 100)}%`,
@@ -807,6 +807,15 @@ function start(): void {
       highlightedConstraintId,
       visibleCorrectionIds: [...visibleCorrectionIds],
       dragActive: dragging,
+      stats: {
+        checksRawPassed: displayedEvaluation.checksRawPassed,
+        checksSafePassed: displayedEvaluation.checksSafePassed,
+        checksTotal: displayedEvaluation.activeCheckCount,
+        incidentRaw: incidentRawPerHour(displayedEvaluation),
+        incidentSafe: incidentSafePerHour(displayedEvaluation),
+        retainedPct: Math.round(displayedEvaluation.retainedGain * 100),
+        decisionTone: displayedEvaluation.decisionTone,
+      },
     })
 
     ui.renderOutcome(buildOutcomeFrame(displayedEvaluation, displayedState.mode, teachingProgress, dragging))

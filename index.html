@@ -60,12 +60,7 @@
         <div id="frame-card" class="frame-card">
           <canvas id="scene-canvas" class="scene-canvas" aria-label="Raw patch and safe projection"></canvas>
 
-          <article class="frame-overlay flow" aria-live="polite">
-            <p class="overlay-kicker">Live step</p>
-            <h2 id="now-title">Intake proposal</h2>
-            <p id="now-body">SafePatch reads the raw direction before correction.</p>
-            <p id="stage-hint" class="stage-hint">Drag the red tip to test another patch instantly.</p>
-          </article>
+          <p id="insight-pill" class="insight-pill neutral">Raw proposal captured.</p>
 
           <article id="decision-card" class="frame-overlay decision hold" aria-live="polite">
             <p id="decision-pill" class="decision-pill hold">HOLD</p>
@@ -102,6 +97,7 @@
           </article>
         </section>
 
+        <p id="stage-hint" class="stage-hint">Drag the red tip to test another patch instantly.</p>
         <p id="impact-line" class="impact-line">Outcome updates live as the patch is corrected.</p>
 
         <section id="force-bars" class="force-bars" aria-label="Guardrail pressure"></section>

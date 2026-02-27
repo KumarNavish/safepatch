@@ -13,6 +13,15 @@ export interface SceneRenderInput {
   highlightedConstraintId: string | null
   visibleCorrectionIds: string[]
   dragActive: boolean
+  stats: {
+    checksRawPassed: number
+    checksSafePassed: number
+    checksTotal: number
+    incidentRaw: number
+    incidentSafe: number
+    retainedPct: number
+    decisionTone: 'ship' | 'hold'
+  }
 }
 
 interface Rect {
@@ -199,6 +208,15 @@ export class SceneRenderer {
         highlightedConstraintId: input.highlightedConstraintId,
       })
     }
+
+    this.drawOutcomeCards({
+      stats: input.stats,
+      beats,
+      teachingMode,
+      mode: input.mode,
+      canvasWidth: width,
+      canvasHeight: height,
+    })
   }
 
   private resolveTeachingBeats(progress: number): TeachingBeats {
@@ -307,6 +325,9 @@ export class SceneRenderer {
         stroke = withAlpha(CORRECTION_COLOR, 0.54 + input.hitBeat * 0.28)
         width = 1.3 + input.hitBeat * 0.9
       }
+      if (input.mode === 'geometry' && !isPrimary) {
+        return
+      }
 
       if (input.mode === 'forces') {
         stroke = withAlpha(baseColor, isHighlighted ? 0.94 : 0.17)
@@ -369,6 +390,122 @@ export class SceneRenderer {
     if (!input.dragActive) {
       this.drawHandleHint(input.mapper.worldToCanvas(rawWorld))
     }
+  }
+
+  private drawOutcomeCards(input: {
+    stats: SceneRenderInput['stats']
+    beats: TeachingBeats
+    teachingMode: boolean
+    mode: SceneMode
+    canvasWidth: number
+    canvasHeight: number
+  }): void {
+    const { stats, beats, teachingMode, mode, canvasWidth, canvasHeight } = input
+    const cardWidth = Math.min(250, Math.max(180, canvasWidth * 0.24))
+    const cardHeight = 104
+    const gap = 10
+    const y = canvasHeight - cardHeight - 24
+    const xRaw = 22
+    const xSafe = xRaw + cardWidth + gap
+
+    const maxIncident = Math.max(stats.incidentRaw, stats.incidentSafe, 1)
+    const rawRatio = clamp(stats.incidentRaw / maxIncident)
+    const safeRatio = clamp(stats.incidentSafe / maxIncident)
+
+    const rawVisibility = teachingMode ? clamp(beats.raw + beats.hit * 0.45) : 1
+    const safeVisibility = mode === 'forces' ? 1 : teachingMode ? clamp(beats.safe + beats.correction * 0.5) : 1
+
+    this.drawMetricCard({
+      x: xRaw,
+      y,
+      width: cardWidth,
+      height: cardHeight,
+      title: 'If Shipped Raw',
+      tone: RAW_COLOR,
+      checksText: `${stats.checksRawPassed}/${stats.checksTotal} checks`,
+      incidentsText: `${stats.incidentRaw.toFixed(1)} incidents/hr`,
+      barRatio: rawRatio,
+      valueText: null,
+      alpha: rawVisibility,
+    })
+
+    this.drawMetricCard({
+      x: xSafe,
+      y,
+      width: cardWidth,
+      height: cardHeight,
+      title: 'After SafePatch',
+      tone: stats.decisionTone === 'ship' ? '#16967e' : SAFE_COLOR,
+      checksText: `${stats.checksSafePassed}/${stats.checksTotal} checks`,
+      incidentsText: `${stats.incidentSafe.toFixed(1)} incidents/hr`,
+      barRatio: safeRatio,
+      valueText: `${stats.retainedPct}% value kept`,
+      alpha: safeVisibility,
+    })
+
+    if (safeVisibility > 0.1) {
+      const from = vec(xRaw + cardWidth + 4, y + cardHeight / 2)
+      const to = vec(xSafe - 8, y + cardHeight / 2)
+      this.drawArrow(from, to, withAlpha(SAFE_COLOR, 0.9), 1.7, false)
+    }
+  }
+
+  private drawMetricCard(input: {
+    x: number
+    y: number
+    width: number
+    height: number
+    title: string
+    tone: string
+    checksText: string
+    incidentsText: string
+    barRatio: number
+    valueText: string | null
+    alpha: number
+  }): void {
+    const { x, y, width, height, title, tone, checksText, incidentsText, barRatio, valueText, alpha } = input
+    if (alpha <= 0.02) {
+      return
+    }
+
+    this.ctx.save()
+    this.ctx.globalAlpha = alpha
+
+    this.drawRoundedRect(x, y, width, height, 11)
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
+    this.ctx.fill()
+    this.ctx.strokeStyle = withAlpha(tone, 0.35)
+    this.ctx.lineWidth = 1
+    this.ctx.stroke()
+
+    this.ctx.font = "600 10px 'IBM Plex Mono'"
+    this.ctx.fillStyle = withAlpha(tone, 0.85)
+    this.ctx.fillText(title.toUpperCase(), x + 10, y + 15)
+
+    this.ctx.font = "600 12px 'Manrope'"
+    this.ctx.fillStyle = '#183353'
+    this.ctx.fillText(checksText, x + 10, y + 36)
+
+    this.ctx.font = "600 13px 'Manrope'"
+    this.ctx.fillStyle = withAlpha(tone, 0.95)
+    this.ctx.fillText(incidentsText, x + 10, y + 56)
+
+    this.drawRoundedRect(x + 10, y + 66, width - 20, 8, 5)
+    this.ctx.fillStyle = '#e4edf9'
+    this.ctx.fill()
+
+    const fillW = Math.max(6, (width - 20) * barRatio)
+    this.drawRoundedRect(x + 10, y + 66, fillW, 8, 5)
+    this.ctx.fillStyle = withAlpha(tone, 0.88)
+    this.ctx.fill()
+
+    if (valueText) {
+      this.ctx.font = "600 11px 'Manrope'"
+      this.ctx.fillStyle = '#2c5e9f'
+      this.ctx.fillText(valueText, x + 10, y + 90)
+    }
+
+    this.ctx.restore()
   }
 
   private drawForcesMode(input: {

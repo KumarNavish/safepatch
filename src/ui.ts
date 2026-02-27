@@ -35,8 +35,8 @@ export interface OutcomeFrameUi {
   decisionTitle: string
   decisionDetail: string
   readinessText: string
-  nowTitle: string
-  nowBody: string
+  insightText: string
+  insightTone: 'neutral' | 'warn' | 'good'
   checksText: string
   incidentText: string
   retainedText: string
@@ -61,8 +61,7 @@ export class UIController {
   private readonly stageHint: HTMLElement
   private readonly stageCaption: HTMLElement
 
-  private readonly nowTitle: HTMLElement
-  private readonly nowBody: HTMLElement
+  private readonly insightPill: HTMLElement
 
   private readonly decisionCard: HTMLElement
   private readonly decisionPill: HTMLElement
@@ -112,9 +111,7 @@ export class UIController {
 
     this.stageHint = this.getElement('stage-hint')
     this.stageCaption = this.getElement('stage-caption')
-
-    this.nowTitle = this.getElement('now-title')
-    this.nowBody = this.getElement('now-body')
+    this.insightPill = this.getElement('insight-pill')
 
     this.decisionCard = this.getElement('decision-card')
     this.decisionPill = this.getElement('decision-pill')
@@ -256,8 +253,9 @@ export class UIController {
     this.decisionTitle.textContent = frame.decisionTitle
     this.decisionDetail.textContent = frame.decisionDetail
 
-    this.nowTitle.textContent = frame.nowTitle
-    this.nowBody.textContent = frame.nowBody
+    this.insightPill.textContent = frame.insightText
+    this.insightPill.classList.remove('neutral', 'warn', 'good')
+    this.insightPill.classList.add(frame.insightTone)
 
     this.checksValue.textContent = frame.checksText
     this.incidentValue.textContent = frame.incidentText
