@@ -202,7 +202,7 @@ export class UIController {
 
   setDragActive(active: boolean): void {
     if (active) {
-      this.frameSub.textContent = 'Dragging proposal. Safe patch and decision are updating live.'
+      this.frameSub.textContent = 'Dragging proposal. Certified patch and decision are updating live.'
     }
   }
 
@@ -261,7 +261,7 @@ export class UIController {
 
       const value = document.createElement('p')
       value.className = 'force-value'
-      value.textContent = `\u03bb ${item.lambda.toFixed(3)}`
+      value.textContent = `Pressure ${item.lambda.toFixed(3)}`
 
       head.append(label, value)
 

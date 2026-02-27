@@ -1,7 +1,7 @@
 :root {
   --bg: #ffffff;
   --surface: #ffffff;
-  --surface-soft: #f7faff;
+  --surface-soft: #f8fbff;
   --line: #dbe6f3;
   --line-strong: #c8d8ec;
   --ink: #10243b;
@@ -13,8 +13,8 @@
   --warn: #f4a037;
   --ship: #119a7a;
   --hold: #9a5e2f;
-  --shadow-xl: 0 24px 44px rgba(11, 35, 67, 0.08);
-  --shadow-md: 0 10px 22px rgba(11, 35, 67, 0.06);
+  --shadow-xl: 0 22px 36px rgba(11, 35, 67, 0.06);
+  --shadow-md: 0 8px 18px rgba(11, 35, 67, 0.05);
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -29,18 +29,16 @@ body {
 }
 
 body {
-  background:
-    radial-gradient(920px 460px at 12% -8%, rgba(44, 108, 245, 0.12), rgba(44, 108, 245, 0)),
-    #ffffff;
+  background: #ffffff;
   color: var(--ink);
   font-family: 'Manrope', 'Segoe UI', sans-serif;
 }
 
 .shell {
-  width: min(1240px, 94vw);
-  margin: 20px auto 34px;
+  width: min(1260px, 95vw);
+  margin: 18px auto 30px;
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
 .hero,
@@ -59,9 +57,9 @@ body {
 .hero {
   border-radius: 24px;
   box-shadow: var(--shadow-xl);
-  padding: clamp(18px, 2.4vw, 30px);
+  padding: clamp(18px, 2.4vw, 28px);
   display: grid;
-  gap: 8px;
+  gap: 7px;
 }
 
 .brand,
@@ -83,32 +81,32 @@ body {
 
 h1 {
   margin: 0;
-  max-width: 16ch;
+  max-width: 20ch;
   font-family: 'Instrument Serif', serif;
-  font-size: clamp(2.5rem, 5.2vw, 3.8rem);
-  line-height: 0.95;
+  font-size: clamp(2.2rem, 4.6vw, 3.35rem);
+  line-height: 0.98;
   font-weight: 400;
   letter-spacing: -0.01em;
 }
 
 .hero-copy {
   margin: 0;
-  max-width: 70ch;
+  max-width: 76ch;
   color: var(--ink-soft);
-  font-size: 0.95rem;
-  line-height: 1.54;
+  font-size: 0.92rem;
+  line-height: 1.5;
 }
 
 .stage-shell {
   box-shadow: var(--shadow-xl);
-  padding: 12px;
+  padding: 10px;
   display: grid;
-  gap: 10px;
+  gap: 9px;
 }
 
 .control-row {
   display: grid;
-  grid-template-columns: minmax(0, 320px) minmax(0, 170px) minmax(0, 220px) auto auto;
+  grid-template-columns: minmax(0, 320px) minmax(0, 180px) minmax(0, 208px) auto auto;
   gap: 8px;
   align-items: center;
 }
@@ -144,7 +142,7 @@ h1 {
 
 .tightness-label {
   color: #3f5e80;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   display: flex;
   justify-content: space-between;
   gap: 8px;
@@ -200,7 +198,7 @@ input[type='range']::-moz-range-thumb {
   border-radius: 999px;
   background: transparent;
   color: #507094;
-  font-size: 0.61rem;
+  font-size: 0.63rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -235,10 +233,9 @@ input[type='range']::-moz-range-thumb {
 
 .preset-note {
   margin: 0;
-  color: #5e7998;
-  font-size: 0.57rem;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  color: #4c6f95;
+  font-size: 0.74rem;
+  line-height: 1.35;
 }
 
 .frame-card {
@@ -251,7 +248,7 @@ input[type='range']::-moz-range-thumb {
 .scene-canvas {
   width: 100%;
   height: clamp(540px, 69vh, 820px);
-  border: 1px solid #d1e0f2;
+  border: 1px solid #d6e4f4;
   border-radius: 15px;
   background: #ffffff;
   display: block;
@@ -266,7 +263,8 @@ input[type='range']::-moz-range-thumb {
 .frame-story {
   position: absolute;
   left: 14px;
-  right: 14px;
+  right: auto;
+  max-width: min(620px, calc(100% - 28px));
   bottom: 14px;
   z-index: 3;
   border: 1px solid rgba(217, 228, 242, 0.9);
@@ -299,7 +297,7 @@ input[type='range']::-moz-range-thumb {
 
 .outcome-strip {
   display: grid;
-  grid-template-columns: 1.45fr repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1.35fr repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 

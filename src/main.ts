@@ -26,38 +26,38 @@ const PRESETS: Record<PresetId, PresetConfig> = {
   normal: {
     id: 'normal',
     pressure: 0.24,
-    note: 'Normal traffic: most proposals can ship with modest correction.',
+    note: 'Baseline load: test whether the patch can ship without raising on-call noise.',
   },
   spike: {
     id: 'spike',
     pressure: 0.56,
-    note: 'Traffic spike: guardrails push harder and unsafe components are trimmed more aggressively.',
+    note: 'Traffic spike: a strong patch may solve today’s issue but still overload response teams.',
   },
   incident: {
     id: 'incident',
     pressure: 0.9,
-    note: 'Live incident: only tightly certified movement should ship.',
+    note: 'Incident mode: only tightly certified movement can pass active release policy.',
   },
 }
 
 const BASE_HALFSPACES: Halfspace[] = [
   {
     id: 'g1',
-    label: 'abuse leakage',
+    label: 'abuse leak risk',
     normal: normalize(vec(0.94, 0.34)),
     bound: 0.72,
     active: true,
   },
   {
     id: 'g2',
-    label: 'on-call alert rate',
+    label: 'on-call page rate',
     normal: normalize(vec(0.26, 1)),
     bound: 0.66,
     active: true,
   },
   {
     id: 'g3',
-    label: 'sla latency risk',
+    label: 'latency SLA risk',
     normal: normalize(vec(-0.89, 0.46)),
     bound: 0.73,
     active: true,
@@ -407,32 +407,32 @@ function buildOutcomeFrame(
     ? evaluation.halfspaces.find((halfspace) => halfspace.id === dominantActiveId)?.label ?? dominantActiveId
     : null
 
-  let frameStep = 'Release impact ready.'
+  let frameStep = 'Ready: compare raw patch vs safeguarded patch.'
   let frameSub =
     incidentDelta >= 0
-      ? `${incidentDelta.toFixed(1)} incidents/hr prevented while keeping ${Math.round(evaluation.retainedGain * 100)}% gain.`
+      ? `${incidentDelta.toFixed(1)} incidents/hr avoided while keeping ${Math.round(evaluation.retainedGain * 100)}% of intended gain.`
       : `${Math.abs(incidentDelta).toFixed(1)} incidents/hr added even after correction.`
 
   if (mode === 'forces') {
-    frameStep = 'Forces view for debugging.'
+    frameStep = 'Forces view: why correction happened.'
     frameSub = dominantLabel
-      ? `Click a force bar to isolate correction from ${dominantLabel}.`
-      : 'No active force terms. Raw proposal is already feasible.'
+      ? `Tap a pressure bar to isolate correction from ${dominantLabel}.`
+      : 'No active correction force. Raw patch is already inside policy.'
   } else if (progress < 0.35) {
-    frameStep = 'Step 1: raw proposal captured.'
-    frameSub = `If shipped directly: ${incidentRaw.toFixed(1)} incidents/hr forecast.`
+    frameStep = 'Step 1: test the proposed patch.'
+    frameSub = `If shipped raw now: ${incidentRaw.toFixed(1)} incidents/hr forecast.`
   } else if (progress < 0.52 && evaluation.rawViolationCount > 0) {
-    frameStep = 'Step 2: policy risk detected.'
-    frameSub = dominantLabel ? `Primary blocker: ${dominantLabel}.` : 'Primary blocker identified from active guardrails.'
+    frameStep = 'Step 2: risk detected.'
+    frameSub = dominantLabel ? `Primary limit hit: ${dominantLabel}.` : 'Primary guardrail breach detected.'
   } else if (progress < 0.78 && evaluation.rawViolationCount > 0) {
-    frameStep = 'Step 3: unsafe component removed.'
-    frameSub = `${Math.round(evaluation.retainedGain * 100)}% of intended gain is preserved.`
+    frameStep = 'Step 3: unsafe movement removed.'
+    frameSub = `${Math.round(evaluation.retainedGain * 100)}% of intended gain remains after correction.`
   } else if (progress < 1) {
-    frameStep = 'Step 4: decision computed from impact.'
-    frameSub = evaluation.decisionTone === 'ship' ? 'All active checks pass for the projected patch.' : 'Projected patch still fails release criteria.'
+    frameStep = 'Step 4: release decision generated.'
+    frameSub = evaluation.decisionTone === 'ship' ? 'All active checks pass for the certified patch.' : 'Certified patch still misses release criteria.'
   } else if (dragging) {
-    frameStep = `Live update: ${evaluation.decisionTone.toUpperCase()}`
-    frameSub = `${Math.round(evaluation.correctionNormRatio * 100)}% trim required for this direction.`
+    frameStep = `Live test: ${evaluation.decisionTone.toUpperCase()}`
+    frameSub = `${Math.round(evaluation.correctionNormRatio * 100)}% of the raw movement must be trimmed for this direction.`
   }
 
   return {

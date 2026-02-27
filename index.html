@@ -20,61 +20,61 @@
     <main class="shell">
       <header class="hero" aria-label="SafePatch intro">
         <p class="brand">SafePatch</p>
-        <h1>Ship the fix, not the risk.</h1>
+        <h1>Can this hotfix reduce incidents without breaking policy?</h1>
         <p class="hero-copy">
-          Drag the red proposal in the main frame. SafePatch keeps the useful direction, trims only unsafe movement,
-          and returns a clear ship or hold recommendation.
+          Drag the proposed patch in the main frame. SafePatch trims only the unsafe component, forecasts operational
+          impact, and returns a clear ship-or-hold call.
         </p>
       </header>
 
       <section class="stage-shell" aria-label="SafePatch interactive stage">
         <div class="control-row" role="group" aria-label="Simulation controls">
-          <div class="preset-row" role="group" aria-label="Traffic scenario">
-            <button class="preset-btn" data-preset="normal" data-pressure="0.24" type="button">Normal</button>
+          <div class="preset-row" role="group" aria-label="Release conditions">
+            <button class="preset-btn" data-preset="normal" data-pressure="0.24" type="button">Baseline</button>
             <button class="preset-btn active" data-preset="spike" data-pressure="0.56" type="button">Spike</button>
             <button class="preset-btn" data-preset="incident" data-pressure="0.9" type="button">Incident</button>
           </div>
 
           <label class="tightness-label" for="tightness-slider">
-            Guardrail tightness
+            Policy strictness
             <span id="tightness-value">62%</span>
           </label>
           <input id="tightness-slider" type="range" min="20" max="90" value="62" />
 
           <div class="mode-toggle" role="group" aria-label="View mode">
-            <button class="mode-btn active" data-mode="geometry" type="button">Geometry</button>
+            <button class="mode-btn active" data-mode="geometry" type="button">Impact</button>
             <button class="mode-btn" data-mode="forces" type="button">Forces</button>
           </div>
 
-          <button id="replay-button" class="replay-btn" type="button">Replay</button>
+          <button id="replay-button" class="replay-btn" type="button">Replay demo</button>
         </div>
 
-        <p id="preset-note" class="preset-note">Traffic spike: correction pressure rises and safe movement shrinks.</p>
+        <p id="preset-note" class="preset-note">Traffic spike: proposed patch likely helps users but risks operational load.</p>
 
         <div id="frame-card" class="frame-card">
           <canvas id="scene-canvas" class="scene-canvas" aria-label="Raw patch and safe patch projection"></canvas>
 
           <div class="frame-story" aria-live="polite">
-            <p id="frame-step" class="frame-step">Reading raw patch direction.</p>
-            <p id="frame-sub" class="frame-sub">Drag the red handle to test another patch instantly.</p>
+            <p id="frame-step" class="frame-step">Testing proposed patch against live policy checks.</p>
+            <p id="frame-sub" class="frame-sub">Drag the patch handle to see impact and recommendation update instantly.</p>
           </div>
         </div>
 
         <section class="outcome-strip" aria-label="Outcome summary">
           <article id="decision-card" class="metric-card decision-card hold">
             <p id="decision-pill" class="decision-pill hold">HOLD</p>
-            <p id="decision-title" class="decision-title">Raw direction is not certifiable yet</p>
-            <p id="decision-detail" class="decision-detail">SafePatch trims only the unsafe component.</p>
+            <p id="decision-title" class="decision-title">Raw patch is not certifiable yet</p>
+            <p id="decision-detail" class="decision-detail">SafePatch keeps useful movement and removes unsafe movement.</p>
             <p id="readiness-note" class="metric-footnote">Release confidence: --</p>
           </article>
 
           <article class="metric-card">
-            <p class="metric-label">Certified checks</p>
+            <p class="metric-label">Checks passed</p>
             <strong id="checks-value" class="metric-value">--</strong>
           </article>
 
           <article class="metric-card">
-            <p class="metric-label">Incident forecast</p>
+            <p class="metric-label">Incident forecast (safe)</p>
             <strong id="incident-value" class="metric-value">--</strong>
           </article>
 
