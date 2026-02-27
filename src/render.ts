@@ -46,6 +46,11 @@ interface TeachingBeats {
   safe: number
 }
 
+interface StageState {
+  index: 0 | 1 | 2 | 3
+  progress: number
+}
+
 interface LabelSpec {
   text: string
   anchor: Vec2
@@ -66,7 +71,6 @@ const SAFE_COLOR = '#2c6cf5'
 const WARN_COLOR = '#f4a037'
 const GOOD_COLOR = '#119a7a'
 const INK = '#132f4a'
-const MUTED = '#5f7896'
 
 function clamp(value: number, min = 0, max = 1): number {
   return Math.min(Math.max(value, min), max)
@@ -75,6 +79,13 @@ function clamp(value: number, min = 0, max = 1): number {
 function easeOutCubic(value: number): number {
   const t = clamp(value)
   return 1 - (1 - t) ** 3
+}
+
+function easeOutBack(value: number): number {
+  const t = clamp(value)
+  const c1 = 1.25
+  const c3 = c1 + 1
+  return 1 + c3 * (t - 1) ** 3 + c1 * (t - 1) ** 2
 }
 
 function phaseWindow(progress: number, start: number, end: number): number {
@@ -200,34 +211,12 @@ export class SceneRenderer {
     this.ctx.lineWidth = 1
     this.ctx.stroke()
 
-    const narrow = width < 860
-    const mapRect: Rect = narrow
-      ? {
-          x: surface.x + 18,
-          y: surface.y + 18,
-          width: surface.width - 36,
-          height: surface.height * 0.64,
-        }
-      : {
-          x: surface.x + 20,
-          y: surface.y + 20,
-          width: surface.width * 0.63,
-          height: surface.height - 40,
-        }
-
-    const storyRect: Rect = narrow
-      ? {
-          x: mapRect.x,
-          y: mapRect.y + mapRect.height + 12,
-          width: mapRect.width,
-          height: surface.y + surface.height - (mapRect.y + mapRect.height + 12) - 14,
-        }
-      : {
-          x: mapRect.x + mapRect.width + 16,
-          y: mapRect.y,
-          width: surface.x + surface.width - (mapRect.x + mapRect.width + 16) - 14,
-          height: mapRect.height,
-        }
+    const mapRect: Rect = {
+      x: surface.x + 18,
+      y: surface.y + 18,
+      width: surface.width - 36,
+      height: surface.height - 36,
+    }
 
     const activeHalfspaces = input.halfspaces.filter((halfspace) => halfspace.active)
     const worldRadius = worldBoundsFromHalfspaces(activeHalfspaces) * 1.15
@@ -244,25 +233,17 @@ export class SceneRenderer {
     )
 
     const highlightedConstraintId = this.resolveHighlightedConstraintId(input)
+    const stage = this.resolveStage(input.mode, rawBlocked, teachingMode, beats)
 
     this.drawMapPanel({
       mapRect,
       mapper,
       input,
       beats,
+      stage,
       teachingMode,
       rawBlocked,
       highlightedConstraintId,
-    })
-
-    this.drawStoryPanel({
-      storyRect,
-      mode: input.mode,
-      stats: input.stats,
-      rawBlocked,
-      teachingMode,
-      beats,
-      projection: input.projection,
     })
   }
 
@@ -291,8 +272,32 @@ export class SceneRenderer {
     }
   }
 
+  private resolveStage(mode: SceneMode, rawBlocked: boolean, teachingMode: boolean, beats: TeachingBeats): StageState {
+    if (mode === 'forces') {
+      return { index: 2, progress: 0.78 }
+    }
+
+    if (!teachingMode) {
+      return { index: 3, progress: 1 }
+    }
+
+    if (beats.raw < 1) {
+      return { index: 0, progress: beats.raw * 0.3 }
+    }
+
+    if (rawBlocked && beats.hit < 1) {
+      return { index: 1, progress: 0.3 + beats.hit * 0.18 }
+    }
+
+    if (rawBlocked && beats.correction < 1) {
+      return { index: 2, progress: 0.48 + beats.correction * 0.28 }
+    }
+
+    return { index: 3, progress: 0.76 + beats.safe * 0.24 }
+  }
+
   private createMapper(rect: Rect, worldRadius: number): Mapper {
-    const padding = 30
+    const padding = 44
     const usableWidth = Math.max(20, rect.width - padding * 2)
     const usableHeight = Math.max(20, rect.height - padding * 2)
     const scale = Math.min(usableWidth / (worldRadius * 2), usableHeight / (worldRadius * 2))
@@ -311,8 +316,8 @@ export class SceneRenderer {
     this.ctx.fillStyle = '#ffffff'
     this.ctx.fillRect(0, 0, width, height)
 
-    const glow = this.ctx.createRadialGradient(width * 0.2, 0, 20, width * 0.2, 0, width * 0.72)
-    glow.addColorStop(0, 'rgba(44, 108, 245, 0.08)')
+    const glow = this.ctx.createRadialGradient(width * 0.15, height * 0.02, 10, width * 0.15, height * 0.02, width * 0.8)
+    glow.addColorStop(0, 'rgba(44, 108, 245, 0.1)')
     glow.addColorStop(1, 'rgba(44, 108, 245, 0)')
     this.ctx.fillStyle = glow
     this.ctx.fillRect(0, 0, width, height)
@@ -323,11 +328,12 @@ export class SceneRenderer {
     mapper: Mapper
     input: SceneRenderInput
     beats: TeachingBeats
+    stage: StageState
     teachingMode: boolean
     rawBlocked: boolean
     highlightedConstraintId: string | null
   }): void {
-    const { mapRect, mapper, input, beats, teachingMode, rawBlocked, highlightedConstraintId } = params
+    const { mapRect, mapper, input, beats, stage, teachingMode, rawBlocked, highlightedConstraintId } = params
 
     this.drawRoundedRect(mapRect.x, mapRect.y, mapRect.width, mapRect.height, 18)
     this.ctx.fillStyle = '#fbfdff'
@@ -336,7 +342,7 @@ export class SceneRenderer {
     this.ctx.lineWidth = 1
     this.ctx.stroke()
 
-    this.drawGrid(mapRect)
+    this.drawPanelAtmosphere(mapRect)
 
     const zone = intersectHalfspaces(input.halfspaces.filter((halfspace) => halfspace.active), mapper.worldRadius)
     if (!zone.isEmpty) {
@@ -352,8 +358,8 @@ export class SceneRenderer {
       this.ctx.closePath()
       this.ctx.fillStyle = withAlpha(SAFE_COLOR, 0.09)
       this.ctx.fill()
-      this.ctx.strokeStyle = withAlpha(SAFE_COLOR, 0.26)
-      this.ctx.lineWidth = 1.3
+      this.ctx.strokeStyle = withAlpha(SAFE_COLOR, 0.28)
+      this.ctx.lineWidth = 1.5
       this.ctx.stroke()
     }
 
@@ -370,13 +376,13 @@ export class SceneRenderer {
       const a = mapper.worldToCanvas(segment[0])
       const b = mapper.worldToCanvas(segment[1])
       const isHighlighted = highlightedConstraintId === halfspace.id
-      const color = isHighlighted ? this.colorForConstraint(halfspace.id) : '#9ab2cf'
+      const baseColor = isHighlighted ? this.colorForConstraint(halfspace.id) : '#9ab2cf'
 
       this.ctx.beginPath()
       this.ctx.moveTo(a.x, a.y)
       this.ctx.lineTo(b.x, b.y)
-      this.ctx.strokeStyle = withAlpha(color, isHighlighted ? 0.8 : 0.4)
-      this.ctx.lineWidth = isHighlighted ? 2 : 1.2
+      this.ctx.strokeStyle = withAlpha(baseColor, isHighlighted ? 0.84 : 0.28)
+      this.ctx.lineWidth = isHighlighted ? 2.3 : 1.1
       this.ctx.stroke()
     }
 
@@ -385,68 +391,64 @@ export class SceneRenderer {
     const safeTip = mapper.worldToCanvas(input.projection.projectedStep)
     this.rawHandleCanvas = rawTip
 
-    const rawVectorProgress = teachingMode ? beats.raw : 1
-    const rawDrawTip = vecLerp(origin, rawTip, rawVectorProgress)
+    const rawProgress = teachingMode ? beats.raw : 1
+    const rawDrawTip = vecLerp(origin, rawTip, rawProgress)
+    this.drawArrow(origin, rawDrawTip, RAW_COLOR, 3)
 
-    this.drawArrow(origin, rawDrawTip, RAW_COLOR, 2.8)
-    if (rawVectorProgress > 0.85) {
+    if (rawProgress > 0.9) {
       this.drawHandle(rawTip, RAW_COLOR, 7)
     }
 
     if (rawBlocked) {
-      const hitPulse = teachingMode ? beats.hit : 1
-      if (hitPulse > 0.03) {
-        this.drawPulse(rawTip, WARN_COLOR, 10 + 16 * hitPulse)
+      const pulseStrength = teachingMode ? beats.hit : 1
+      if (pulseStrength > 0.03) {
+        this.drawPulse(rawTip, WARN_COLOR, 12 + pulseStrength * 22)
       }
 
       const correctionProgress = teachingMode ? beats.correction : 1
       if (correctionProgress > 0.03) {
         const correctionTip = vecLerp(rawTip, safeTip, correctionProgress)
-        this.drawArrow(rawTip, correctionTip, WARN_COLOR, 2.1, true)
+        this.drawArrow(rawTip, correctionTip, WARN_COLOR, 2.3, true)
       }
     }
 
-    if (input.mode === 'geometry') {
-      const safeVectorProgress = teachingMode ? (rawBlocked ? beats.safe : beats.raw) : 1
-      const safeDrawTip = vecLerp(origin, safeTip, safeVectorProgress)
-      this.drawArrow(origin, safeDrawTip, SAFE_COLOR, 2.8)
-      if (safeVectorProgress > 0.86) {
-        this.drawHandle(safeTip, SAFE_COLOR, 6)
-      }
-    } else {
-      this.drawArrow(origin, safeTip, withAlpha(SAFE_COLOR, 0.35), 2)
-      this.drawHandle(safeTip, SAFE_COLOR, 6)
+    const safeProgress = input.mode === 'forces' ? 1 : teachingMode ? (rawBlocked ? beats.safe : beats.raw) : 1
+    const safeDrawTip = vecLerp(origin, safeTip, easeOutBack(safeProgress))
+    this.drawArrow(origin, safeDrawTip, SAFE_COLOR, 3)
+
+    if (safeProgress > 0.86) {
+      this.drawHandle(safeTip, SAFE_COLOR, 6.6)
+    }
+
+    if (input.mode === 'forces') {
       this.drawForceDecomposition({ mapper, projection: input.projection, visibleIds: input.visibleCorrectionIds })
     }
 
     this.drawOrigin(origin)
-    this.drawMapLegend(mapRect)
 
     const labels: LabelSpec[] = [
-      {
-        text: 'Raw patch',
-        anchor: rawTip,
-        color: RAW_COLOR,
-      },
-      {
-        text: 'Certified patch',
-        anchor: safeTip,
-        color: SAFE_COLOR,
-      },
-      {
-        text: 'Policy envelope',
-        anchor: vec(mapRect.x + 20, mapRect.y + 24),
-        color: '#3e67bb',
-      },
+      { text: 'Raw patch (drag)', anchor: rawTip, color: RAW_COLOR },
+      { text: 'Certified patch', anchor: safeTip, color: SAFE_COLOR },
     ]
-
     this.drawLabels(labels, mapRect)
 
+    this.drawLegend(mapRect)
+    this.drawValueChips(mapRect, input.stats, rawBlocked)
+    this.drawTimeline(mapRect, stage)
+
     if (input.dragActive) {
-      this.ctx.font = "600 11px 'IBM Plex Mono'"
-      this.ctx.fillStyle = withAlpha('#214d9b', 0.9)
-      this.ctx.fillText('Dragging proposal...', mapRect.x + 16, mapRect.y + mapRect.height - 16)
+      this.drawDragToast(mapRect)
     }
+  }
+
+  private drawPanelAtmosphere(rect: Rect): void {
+    const g = this.ctx.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.height)
+    g.addColorStop(0, '#ffffff')
+    g.addColorStop(1, '#f8fbff')
+
+    this.drawRoundedRect(rect.x + 1, rect.y + 1, rect.width - 2, rect.height - 2, 17)
+    this.ctx.fillStyle = g
+    this.ctx.fill()
   }
 
   private drawForceDecomposition(params: {
@@ -456,8 +458,8 @@ export class SceneRenderer {
   }): void {
     const { mapper, projection, visibleIds } = params
 
-    const activeIds = visibleIds.filter((id) => (projection.lambdaById[id] ?? 0) > 1e-6)
-    const forceIds = activeIds.length > 0 ? activeIds : projection.activeSetIds
+    const visibleSet = new Set(visibleIds)
+    const forceIds = projection.activeSetIds.filter((id) => (projection.lambdaById[id] ?? 0) > 1e-6)
 
     let cursor = { ...projection.step0 }
     for (const id of forceIds) {
@@ -472,258 +474,174 @@ export class SceneRenderer {
         y: cursor.y + correction.y,
       }
 
+      const selected = visibleSet.size === 0 || visibleSet.has(id)
       this.drawArrow(
         mapper.worldToCanvas(cursor),
         mapper.worldToCanvas(next),
-        this.colorForConstraint(id),
-        2,
+        withAlpha(this.colorForConstraint(id), selected ? 0.9 : 0.35),
+        selected ? 2.4 : 1.6,
         true,
       )
 
       cursor = next
     }
-
-    if (Math.hypot(cursor.x - projection.projectedStep.x, cursor.y - projection.projectedStep.y) > 1e-4) {
-      this.drawArrow(
-        mapper.worldToCanvas(cursor),
-        mapper.worldToCanvas(projection.projectedStep),
-        withAlpha(SAFE_COLOR, 0.6),
-        1.8,
-        true,
-      )
-    }
   }
 
-  private drawStoryPanel(params: {
-    storyRect: Rect
-    mode: SceneMode
-    stats: SceneRenderInput['stats']
-    rawBlocked: boolean
-    teachingMode: boolean
-    beats: TeachingBeats
-    projection: ProjectionResult
-  }): void {
-    const { storyRect, mode, stats, rawBlocked, teachingMode, beats, projection } = params
-
-    this.drawRoundedRect(storyRect.x, storyRect.y, storyRect.width, storyRect.height, 16)
-    this.ctx.fillStyle = '#ffffff'
-    this.ctx.fill()
-    this.ctx.strokeStyle = withAlpha('#d6e4f4', 0.95)
-    this.ctx.lineWidth = 1
-    this.ctx.stroke()
-
-    const stage = this.resolveStageCopy(mode, rawBlocked, teachingMode, beats)
+  private drawLegend(mapRect: Rect): void {
+    const x = mapRect.x + 14
+    const y = mapRect.y + 14
 
     this.ctx.font = "600 10px 'IBM Plex Mono'"
-    this.ctx.fillStyle = withAlpha('#4e6787', 0.9)
-    this.ctx.fillText('LIVE PIPELINE', storyRect.x + 14, storyRect.y + 20)
+    this.ctx.fillStyle = withAlpha('#446282', 0.94)
+    this.ctx.fillText('SAFEPATCH LIVE STAGE', x, y)
 
-    this.drawProgress(storyRect.x + 14, storyRect.y + 28, storyRect.width - 28, stage.progress)
+    const items = [
+      { color: RAW_COLOR, label: 'Raw proposal' },
+      { color: WARN_COLOR, label: 'Unsafe component removed' },
+      { color: SAFE_COLOR, label: 'Certified proposal' },
+    ]
 
-    this.ctx.font = "700 18px 'Manrope'"
-    this.ctx.fillStyle = INK
-    this.wrapText(stage.title, storyRect.x + 14, storyRect.y + 54, storyRect.width - 28, 22, 2)
+    let cursorX = x
+    const rowY = y + 16
 
-    this.ctx.font = "500 13px 'Manrope'"
-    this.ctx.fillStyle = MUTED
-    this.wrapText(stage.body, storyRect.x + 14, storyRect.y + 104, storyRect.width - 28, 20, 3)
+    for (const item of items) {
+      this.ctx.beginPath()
+      this.ctx.arc(cursorX + 5, rowY - 3, 3.5, 0, Math.PI * 2)
+      this.ctx.fillStyle = item.color
+      this.ctx.fill()
 
-    const rowY = storyRect.y + Math.max(138, storyRect.height * 0.36)
-    const rowW = storyRect.width - 28
-    this.drawMetricRow({
-      x: storyRect.x + 14,
-      y: rowY,
-      width: rowW,
-      title: 'If shipped raw',
-      incidentsText: `${stats.incidentRaw.toFixed(1)} incidents/hr`,
-      checksText: `${stats.checksRawPassed}/${stats.checksTotal} checks`,
-      tone: RAW_COLOR,
-    })
+      this.ctx.fillStyle = withAlpha('#50708f', 0.95)
+      this.ctx.fillText(item.label, cursorX + 12, rowY)
+      cursorX += this.ctx.measureText(item.label).width + 42
+    }
+  }
 
-    this.drawMetricRow({
-      x: storyRect.x + 14,
-      y: rowY + 76,
-      width: rowW,
-      title: 'After SafePatch',
-      incidentsText: `${stats.incidentSafe.toFixed(1)} incidents/hr`,
-      checksText: `${stats.checksSafePassed}/${stats.checksTotal} checks`,
-      tone: stats.decisionTone === 'ship' ? GOOD_COLOR : SAFE_COLOR,
-      valueText: `${stats.retainedPct}% value retained`,
-    })
+  private drawValueChips(mapRect: Rect, stats: SceneRenderInput['stats'], rawBlocked: boolean): void {
+    const incidentDelta = Math.round((stats.incidentRaw - stats.incidentSafe) * 10) / 10
+    const chips = [
+      {
+        title: 'Problem',
+        value: rawBlocked
+          ? `${stats.checksRawPassed}/${stats.checksTotal} checks pass in raw`
+          : 'Raw patch already inside policy envelope',
+        tone: rawBlocked ? WARN_COLOR : GOOD_COLOR,
+      },
+      {
+        title: 'Fix',
+        value: `${stats.checksSafePassed}/${stats.checksTotal} checks pass after projection`,
+        tone: SAFE_COLOR,
+      },
+      {
+        title: 'Value',
+        value: incidentDelta >= 0 ? `${incidentDelta.toFixed(1)}/hr incidents prevented` : `${Math.abs(incidentDelta).toFixed(1)}/hr incidents added`,
+        tone: incidentDelta >= 0 ? GOOD_COLOR : WARN_COLOR,
+      },
+    ]
 
-    const pillY = storyRect.y + storyRect.height - 46
-    const pillTone = stats.decisionTone === 'ship' ? GOOD_COLOR : '#995d30'
-    const pillText = stats.decisionTone === 'ship' ? 'SHIP' : 'HOLD'
+    const maxWidth = Math.min(320, mapRect.width * 0.46)
+    const chipW = maxWidth
+    const chipH = 46
+    const gap = 8
+    const startX = mapRect.x + mapRect.width - chipW - 14
+    const startY = mapRect.y + 14
 
-    this.drawRoundedRect(storyRect.x + 14, pillY, 72, 30, 15)
-    this.ctx.fillStyle = withAlpha(pillTone, 0.12)
+    for (let i = 0; i < chips.length; i += 1) {
+      const chip = chips[i]
+      const y = startY + i * (chipH + gap)
+
+      this.drawRoundedRect(startX, y, chipW, chipH, 11)
+      this.ctx.fillStyle = withAlpha('#ffffff', 0.95)
+      this.ctx.fill()
+      this.ctx.strokeStyle = withAlpha(chip.tone, 0.34)
+      this.ctx.lineWidth = 1
+      this.ctx.stroke()
+
+      this.ctx.font = "600 9px 'IBM Plex Mono'"
+      this.ctx.fillStyle = withAlpha(chip.tone, 0.95)
+      this.ctx.fillText(chip.title.toUpperCase(), startX + 10, y + 14)
+
+      this.ctx.font = "600 12px 'Manrope'"
+      this.ctx.fillStyle = INK
+      this.wrapText(chip.value, startX + 10, y + 31, chipW - 20, 14, 1)
+    }
+  }
+
+  private drawTimeline(mapRect: Rect, stage: StageState): void {
+    const x = mapRect.x + 14
+    const y = mapRect.y + mapRect.height - 36
+    const width = mapRect.width - 28
+
+    this.drawRoundedRect(x, y, width, 22, 11)
+    this.ctx.fillStyle = withAlpha('#ffffff', 0.92)
     this.ctx.fill()
-    this.ctx.strokeStyle = withAlpha(pillTone, 0.34)
+    this.ctx.strokeStyle = withAlpha('#d4e3f5', 0.92)
     this.ctx.lineWidth = 1
     this.ctx.stroke()
 
-    this.ctx.font = "700 11px 'IBM Plex Mono'"
-    this.ctx.fillStyle = withAlpha(pillTone, 0.95)
-    this.ctx.fillText(pillText, storyRect.x + 30, pillY + 19)
+    const railX0 = x + 14
+    const railX1 = x + width - 14
+    const railY = y + 11
 
-    const dominantId = [...projection.activeSetIds].sort((a, b) => (projection.lambdaById[b] ?? 0) - (projection.lambdaById[a] ?? 0))[0]
-    const lambda = dominantId ? projection.lambdaById[dominantId] ?? 0 : 0
-    const pressureText = dominantId && lambda > 1e-6 ? `Main pressure: ${dominantId.toUpperCase()} (λ ${lambda.toFixed(2)})` : 'No active pressure. Raw patch is already feasible.'
-
-    this.ctx.font = "600 11px 'Manrope'"
-    this.ctx.fillStyle = withAlpha('#446282', 0.95)
-    this.wrapText(pressureText, storyRect.x + 96, pillY + 12, storyRect.width - 110, 16, 2)
-  }
-
-  private resolveStageCopy(mode: SceneMode, rawBlocked: boolean, teachingMode: boolean, beats: TeachingBeats): {
-    title: string
-    body: string
-    progress: number
-  } {
-    if (mode === 'forces') {
-      return {
-        title: 'Inspect correction forces',
-        body: 'Each active guardrail adds one correction vector. Click a force bar to isolate that push-back.',
-        progress: 0.76,
-      }
-    }
-
-    if (!teachingMode) {
-      return {
-        title: rawBlocked ? 'Certified patch computed' : 'Raw patch already safe',
-        body: rawBlocked
-          ? 'Unsafe component is removed while preserving useful movement.'
-          : 'SafePatch confirms this proposal can ship without correction.',
-        progress: 1,
-      }
-    }
-
-    if (beats.raw < 1) {
-      return {
-        title: 'Reading raw patch direction',
-        body: 'The red vector is the proposed hotfix before policy checks.',
-        progress: beats.raw * 0.26,
-      }
-    }
-
-    if (rawBlocked && beats.hit < 1) {
-      return {
-        title: 'Policy violation detected',
-        body: 'The proposal crosses the envelope, so raw rollout is blocked.',
-        progress: 0.26 + beats.hit * 0.18,
-      }
-    }
-
-    if (rawBlocked && beats.correction < 1) {
-      return {
-        title: 'Applying push-back',
-        body: 'SafePatch removes only the unsafe component using active guardrail forces.',
-        progress: 0.44 + beats.correction * 0.28,
-      }
-    }
-
-    return {
-      title: 'Certified patch ready',
-      body: 'The blue vector is the closest safe rollout direction to the original intent.',
-      progress: 0.72 + beats.safe * 0.28,
-    }
-  }
-
-  private drawMetricRow(input: {
-    x: number
-    y: number
-    width: number
-    title: string
-    incidentsText: string
-    checksText: string
-    tone: string
-    valueText?: string
-  }): void {
-    const { x, y, width, title, incidentsText, checksText, tone, valueText } = input
-
-    this.drawRoundedRect(x, y, width, 66, 12)
-    this.ctx.fillStyle = withAlpha('#f9fbff', 0.98)
-    this.ctx.fill()
-    this.ctx.strokeStyle = withAlpha(tone, 0.26)
-    this.ctx.lineWidth = 1
-    this.ctx.stroke()
-
-    this.ctx.font = "600 9px 'IBM Plex Mono'"
-    this.ctx.fillStyle = withAlpha(tone, 0.92)
-    this.ctx.fillText(title.toUpperCase(), x + 10, y + 15)
-
-    this.ctx.font = "700 13px 'Manrope'"
-    this.ctx.fillStyle = INK
-    this.ctx.fillText(incidentsText, x + 10, y + 34)
-
-    this.ctx.font = "600 11px 'Manrope'"
-    this.ctx.fillStyle = MUTED
-    this.ctx.fillText(checksText, x + 10, y + 52)
-
-    if (valueText) {
-      this.ctx.fillStyle = withAlpha('#2c5e9f', 0.96)
-      this.ctx.textAlign = 'right'
-      this.ctx.fillText(valueText, x + width - 10, y + 52)
-      this.ctx.textAlign = 'left'
-    }
-  }
-
-  private drawProgress(x: number, y: number, width: number, progress: number): void {
-    this.drawRoundedRect(x, y, width, 6, 4)
-    this.ctx.fillStyle = '#e5eef9'
-    this.ctx.fill()
-
-    this.drawRoundedRect(x, y, Math.max(10, width * clamp(progress)), 6, 4)
-    this.ctx.fillStyle = withAlpha(SAFE_COLOR, 0.82)
-    this.ctx.fill()
-  }
-
-  private drawGrid(rect: Rect): void {
-    const columns = 6
-    const rows = 5
-
-    this.ctx.save()
     this.ctx.beginPath()
-    this.ctx.rect(rect.x + 1, rect.y + 1, rect.width - 2, rect.height - 2)
-    this.ctx.clip()
+    this.ctx.moveTo(railX0, railY)
+    this.ctx.lineTo(railX1, railY)
+    this.ctx.strokeStyle = '#deebfa'
+    this.ctx.lineWidth = 4
+    this.ctx.lineCap = 'round'
+    this.ctx.stroke()
 
-    this.ctx.strokeStyle = withAlpha('#dce8f8', 0.7)
+    const fillX = numberLerp(railX0, railX1, clamp(stage.progress))
+    this.ctx.beginPath()
+    this.ctx.moveTo(railX0, railY)
+    this.ctx.lineTo(fillX, railY)
+    this.ctx.strokeStyle = withAlpha(SAFE_COLOR, 0.86)
+    this.ctx.lineWidth = 4
+    this.ctx.lineCap = 'round'
+    this.ctx.stroke()
+
+    const steps = [0, 1, 2, 3] as const
+    for (const step of steps) {
+      const t = step / 3
+      const cx = numberLerp(railX0, railX1, t)
+
+      this.ctx.beginPath()
+      this.ctx.arc(cx, railY, step === stage.index ? 5.6 : 4.2, 0, Math.PI * 2)
+      this.ctx.fillStyle = step <= stage.index ? withAlpha(SAFE_COLOR, 0.95) : '#e9f1fd'
+      this.ctx.fill()
+
+      if (step === stage.index) {
+        this.ctx.beginPath()
+        this.ctx.arc(cx, railY, 8.8, 0, Math.PI * 2)
+        this.ctx.strokeStyle = withAlpha(SAFE_COLOR, 0.28)
+        this.ctx.lineWidth = 1
+        this.ctx.stroke()
+      }
+    }
+  }
+
+  private drawDragToast(mapRect: Rect): void {
+    const width = 204
+    const height = 28
+    const x = mapRect.x + mapRect.width * 0.5 - width * 0.5
+    const y = mapRect.y + 16
+
+    this.drawRoundedRect(x, y, width, height, 14)
+    this.ctx.fillStyle = withAlpha('#ffffff', 0.92)
+    this.ctx.fill()
+    this.ctx.strokeStyle = withAlpha(SAFE_COLOR, 0.35)
     this.ctx.lineWidth = 1
+    this.ctx.stroke()
 
-    for (let c = 1; c < columns; c += 1) {
-      const x = rect.x + (rect.width / columns) * c
-      this.ctx.beginPath()
-      this.ctx.moveTo(x, rect.y)
-      this.ctx.lineTo(x, rect.y + rect.height)
-      this.ctx.stroke()
-    }
-
-    for (let r = 1; r < rows; r += 1) {
-      const y = rect.y + (rect.height / rows) * r
-      this.ctx.beginPath()
-      this.ctx.moveTo(rect.x, y)
-      this.ctx.lineTo(rect.x + rect.width, y)
-      this.ctx.stroke()
-    }
-
-    this.ctx.restore()
+    this.ctx.font = "600 11px 'IBM Plex Mono'"
+    this.ctx.fillStyle = withAlpha('#2a57ad', 0.95)
+    this.ctx.fillText('LIVE DRAG: certifying...', x + 20, y + 18)
   }
 
   private drawOrigin(point: Vec2): void {
     this.ctx.beginPath()
-    this.ctx.arc(point.x, point.y, 4.5, 0, Math.PI * 2)
-    this.ctx.fillStyle = '#1b3f68'
+    this.ctx.arc(point.x, point.y, 4.8, 0, Math.PI * 2)
+    this.ctx.fillStyle = '#1a3f68'
     this.ctx.fill()
-
-    this.ctx.font = "600 10px 'IBM Plex Mono'"
-    this.ctx.fillStyle = withAlpha('#4f6988', 0.94)
-    this.ctx.fillText('Origin', point.x + 8, point.y - 8)
-  }
-
-  private drawMapLegend(mapRect: Rect): void {
-    this.ctx.font = "600 10px 'IBM Plex Mono'"
-    this.ctx.fillStyle = withAlpha('#4a6384', 0.9)
-    this.ctx.fillText('DRAG RED HANDLE TO PROPOSE PATCH', mapRect.x + 14, mapRect.y + mapRect.height - 14)
   }
 
   private drawArrow(from: Vec2, to: Vec2, color: string, width: number, dashed = false): void {
@@ -733,7 +651,7 @@ export class SceneRenderer {
     }
 
     const angle = Math.atan2(to.y - from.y, to.x - from.x)
-    const head = Math.min(11, Math.max(7, width * 3.4))
+    const head = Math.min(11, Math.max(7, width * 3.2))
 
     this.ctx.save()
     if (dashed) {
@@ -761,8 +679,8 @@ export class SceneRenderer {
 
   private drawHandle(point: Vec2, color: string, radius: number): void {
     this.ctx.beginPath()
-    this.ctx.arc(point.x, point.y, radius + 4, 0, Math.PI * 2)
-    this.ctx.fillStyle = withAlpha(color, 0.13)
+    this.ctx.arc(point.x, point.y, radius + 4.2, 0, Math.PI * 2)
+    this.ctx.fillStyle = withAlpha(color, 0.14)
     this.ctx.fill()
 
     this.ctx.beginPath()
@@ -784,7 +702,7 @@ export class SceneRenderer {
   private drawPulse(point: Vec2, color: string, radius: number): void {
     this.ctx.beginPath()
     this.ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
-    this.ctx.strokeStyle = withAlpha(color, 0.26)
+    this.ctx.strokeStyle = withAlpha(color, 0.3)
     this.ctx.lineWidth = 1.8
     this.ctx.stroke()
   }
@@ -801,8 +719,6 @@ export class SceneRenderer {
         { x: 12, y: 12 },
         { x: -width - 12, y: -14 },
         { x: -width - 12, y: 12 },
-        { x: -width * 0.5, y: -24 },
-        { x: -width * 0.5, y: 16 },
       ]
 
       let chosen: LabelPlacement | null = null
