@@ -18,117 +18,87 @@
   </head>
   <body>
     <main class="shell">
-      <header class="hero" aria-label="SafePatch introduction">
+      <header class="hero" aria-label="SafePatch intro">
         <p class="brand">SafePatch</p>
-        <h1>Release fixes fast, without breaking guardrails.</h1>
+        <h1>See if a hotfix is safe in one glance.</h1>
         <p class="hero-copy">
-          Drag the red proposal in the stage. SafePatch instantly projects a certifiable patch in blue and updates
-          ship/hold with a concrete reason.
+          The red arrow is your raw patch. SafePatch instantly projects a certifiable blue patch and returns ship or
+          hold with a reason.
         </p>
       </header>
 
-      <section class="workspace" aria-label="SafePatch studio">
-        <section class="stage" aria-label="Interactive release stage">
-          <div class="stage-top">
-            <div class="mode-toggle" role="group" aria-label="View mode">
-              <button class="mode-btn active" data-mode="geometry" type="button">Flow view</button>
-              <button class="mode-btn" data-mode="forces" type="button">Forces view</button>
-            </div>
-            <button id="replay-button" class="replay-btn" type="button">Replay walkthrough</button>
+      <section class="stage-shell" aria-label="SafePatch main stage">
+        <div class="control-row">
+          <div class="preset-row" role="group" aria-label="Traffic scenario">
+            <button class="preset-btn" data-preset="normal" data-pressure="0.24" type="button">Normal</button>
+            <button class="preset-btn active" data-preset="spike" data-pressure="0.56" type="button">Spike</button>
+            <button class="preset-btn" data-preset="incident" data-pressure="0.9" type="button">Incident</button>
           </div>
 
-          <p id="stage-hint" class="stage-hint">Drag the red tip. Blue updates to the safest certifiable direction.</p>
+          <label class="tightness-label" for="tightness-slider">
+            Guardrail tightness
+            <span id="tightness-value">62%</span>
+          </label>
+          <input id="tightness-slider" type="range" min="20" max="90" value="62" />
 
+          <div class="mode-toggle" role="group" aria-label="View mode">
+            <button class="mode-btn active" data-mode="geometry" type="button">Flow</button>
+            <button class="mode-btn" data-mode="forces" type="button">Forces</button>
+          </div>
+
+          <button id="replay-button" class="replay-btn" type="button">Replay</button>
+        </div>
+
+        <p id="preset-note" class="preset-note">Traffic spike: correction pressure rises and safe movement shrinks.</p>
+
+        <div id="frame-card" class="frame-card">
           <canvas id="scene-canvas" class="scene-canvas" aria-label="Raw patch and safe projection"></canvas>
 
+          <article class="frame-overlay flow" aria-live="polite">
+            <p class="overlay-kicker">Live step</p>
+            <h2 id="now-title">Intake proposal</h2>
+            <p id="now-body">SafePatch reads the raw direction before correction.</p>
+            <p id="stage-hint" class="stage-hint">Drag the red tip to test another patch instantly.</p>
+          </article>
+
+          <article id="decision-card" class="frame-overlay decision hold" aria-live="polite">
+            <p id="decision-pill" class="decision-pill hold">HOLD</p>
+            <p id="decision-title" class="decision-title">Raw direction is not certifiable yet</p>
+            <p id="decision-detail" class="decision-detail">SafePatch will trim only the unsafe component.</p>
+          </article>
+
+          <div id="flow-rail" class="flow-rail" aria-hidden="true">
+            <span class="flow-step" data-step="0"></span>
+            <span class="flow-step" data-step="1"></span>
+            <span class="flow-step" data-step="2"></span>
+            <span class="flow-step" data-step="3"></span>
+          </div>
+
           <p id="stage-caption" class="stage-caption">Step 1: intake raw proposal.</p>
+        </div>
+
+        <section class="outcome-strip" aria-label="Outcome summary">
+          <article class="metric-card">
+            <p class="metric-label">Certified checks</p>
+            <strong id="checks-value" class="metric-value">--</strong>
+          </article>
+          <article class="metric-card">
+            <p class="metric-label">Incident forecast</p>
+            <strong id="incident-value" class="metric-value">--</strong>
+          </article>
+          <article class="metric-card">
+            <p class="metric-label">Useful gain kept</p>
+            <strong id="retained-value" class="metric-value">--</strong>
+          </article>
+          <article class="metric-card">
+            <p class="metric-label">Release confidence</p>
+            <strong id="readiness-note" class="metric-value">--</strong>
+          </article>
         </section>
 
-        <aside id="sidebar" class="cockpit" aria-label="Live release guide">
-          <article class="now-card" aria-live="polite">
-            <p class="kicker">Now</p>
-            <h2 id="now-title">Proposal intake</h2>
-            <p id="now-body">SafePatch is reading the raw patch direction.</p>
-            <p id="now-reason" class="now-reason">No recommendation yet.</p>
-          </article>
+        <p id="impact-line" class="impact-line">Outcome updates live as the patch is corrected.</p>
 
-          <article id="decision-card" class="decision-card hold" aria-live="polite">
-            <p id="decision-pill" class="decision-pill hold">HOLD</p>
-            <h3 id="decision-title">Hold: raw direction is not certifiable yet</h3>
-            <p id="decision-detail">Adjust direction until checks pass with enough retained product value.</p>
-            <p id="readiness-note" class="readiness-note">Release confidence: --</p>
-          </article>
-
-          <section class="score-strip" aria-label="Outcome summary">
-            <article class="score-card">
-              <p class="score-label">Certified checks</p>
-              <strong id="checks-value" class="score-value">--</strong>
-            </article>
-            <article class="score-card">
-              <p class="score-label">Incident forecast</p>
-              <strong id="incident-value" class="score-value">--</strong>
-            </article>
-            <article class="score-card">
-              <p class="score-label">Useful gain kept</p>
-              <strong id="retained-value" class="score-value">--</strong>
-            </article>
-          </section>
-
-          <article id="pipeline-card" class="pipeline-card" aria-label="Pipeline playback">
-            <div class="pipeline-head">
-              <p class="kicker">Pipeline</p>
-              <p id="impact-line" class="impact-line">Raw versus certified impact appears here.</p>
-            </div>
-
-            <div id="pipeline" class="pipeline" aria-live="polite">
-              <article class="pipe-step" data-step="0">
-                <span class="pipe-dot" aria-hidden="true"></span>
-                <div class="pipe-copy">
-                  <p class="pipe-title">1. Intake proposal</p>
-                  <p id="pipe-line-0" class="pipe-line">Waiting for patch direction.</p>
-                </div>
-              </article>
-              <article class="pipe-step" data-step="1">
-                <span class="pipe-dot" aria-hidden="true"></span>
-                <div class="pipe-copy">
-                  <p class="pipe-title">2. Detect guardrail risk</p>
-                  <p id="pipe-line-1" class="pipe-line">No active guardrail pressure.</p>
-                </div>
-              </article>
-              <article class="pipe-step" data-step="2">
-                <span class="pipe-dot" aria-hidden="true"></span>
-                <div class="pipe-copy">
-                  <p class="pipe-title">3. Project safe patch</p>
-                  <p id="pipe-line-2" class="pipe-line">No correction applied.</p>
-                </div>
-              </article>
-              <article class="pipe-step" data-step="3">
-                <span class="pipe-dot" aria-hidden="true"></span>
-                <div class="pipe-copy">
-                  <p class="pipe-title">4. Recommend action</p>
-                  <p id="pipe-line-3" class="pipe-line">Decision pending.</p>
-                </div>
-              </article>
-            </div>
-          </article>
-
-          <section id="force-bars" class="force-bars" aria-label="Constraint correction pressure"></section>
-
-          <details class="controls">
-            <summary>Scenario controls</summary>
-            <div class="controls-body">
-              <div class="preset-row" role="group" aria-label="Traffic scenario">
-                <button class="preset-btn" data-preset="normal" data-pressure="0.24" type="button">Normal</button>
-                <button class="preset-btn active" data-preset="spike" data-pressure="0.56" type="button">Spike</button>
-                <button class="preset-btn" data-preset="incident" data-pressure="0.9" type="button">Incident</button>
-              </div>
-              <p id="preset-note" class="preset-note">Peak traffic makes guardrail correction pressure rise faster.</p>
-
-              <label for="tightness-slider" class="tightness-label">Guardrail tightness <span id="tightness-value">62%</span></label>
-              <input id="tightness-slider" type="range" min="20" max="90" value="62" />
-            </div>
-          </details>
-        </aside>
+        <section id="force-bars" class="force-bars" aria-label="Guardrail pressure"></section>
       </section>
 
       <details class="details-panel">
@@ -136,23 +106,23 @@
 
         <section class="details-grid">
           <article class="detail-card">
-            <h4>Why this decision</h4>
+            <h3>Why this decision</h3>
             <ul id="why-list" class="detail-list">
-              <li>Interact with the stage to generate rationale.</li>
+              <li>Drag the stage to generate rationale.</li>
             </ul>
           </article>
 
           <article class="detail-card">
-            <h4>Recommended next steps</h4>
+            <h3>Recommended actions</h3>
             <ul id="action-list" class="detail-list">
-              <li>Drag the red proposal to test alternatives.</li>
+              <li>Adjust the proposal direction and compare outcomes.</li>
             </ul>
           </article>
         </section>
 
         <section class="memo-card">
           <div class="memo-head">
-            <p class="kicker">Release memo</p>
+            <p class="overlay-kicker">Release memo</p>
             <button id="copy-memo-button" class="small-btn" type="button">Copy memo</button>
           </div>
           <p id="memo-text" class="memo-text">Memo updates as you interact.</p>
@@ -160,7 +130,7 @@
         </section>
 
         <section class="math-card">
-          <h4>Math (optional)</h4>
+          <h3>Math (optional)</h3>
           <div id="equation-main" class="equation"></div>
           <div id="equation-sub" class="equation"></div>
           <div id="equation-terms" class="equation-terms"></div>

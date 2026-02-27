@@ -438,106 +438,63 @@ function buildOutcomeFrame(
     ? evaluation.halfspaces.find((halfspace) => halfspace.id === dominantActiveId)?.label ?? dominantActiveId
     : null
 
-  let pipelineStep = 3
+  let storyStep = 3
   let stageCaption = 'Red is raw proposal. Blue is certified patch.'
 
   let nowTitle = 'Live decision'
   let nowBody = 'SafePatch is continuously certifying the proposal against active guardrails.'
-  let nowReason = `Recommendation: ${evaluation.decisionTone.toUpperCase()}.`
 
   let impactLine =
     incidentDelta >= 0
       ? `${incidentDelta.toFixed(1)} incidents/hr avoided after certification.`
       : `${Math.abs(incidentDelta).toFixed(1)} incidents/hr added even after certification.`
-
-  let pipelineLines: [string, string, string, string] = [
-    `Raw proposal Δ0 = (${evaluation.projection.step0.x.toFixed(2)}, ${evaluation.projection.step0.y.toFixed(2)}).`,
-    dominantLabel ? `Top guardrail pressure: ${dominantLabel}.` : 'No active guardrail pressure.',
-    `Trimmed ${Math.round(evaluation.correctionNormRatio * 100)}% to create Δ* safely.`,
-    `Decision ${evaluation.decisionTone.toUpperCase()} at confidence ${evaluation.readiness}/100.`,
-  ]
+  nowBody = `${nowBody} Decision: ${evaluation.decisionTone.toUpperCase()}.`
 
   if (duringStory) {
     if (progress < 0.28) {
-      pipelineStep = 0
+      storyStep = 0
       nowTitle = 'Intake raw proposal'
       nowBody = 'The system reads your candidate fix direction before any safety correction.'
-      nowReason = 'No release recommendation yet.'
       stageCaption = 'Step 1: intake raw proposal.'
       impactLine = `Raw forecast: ${incidentRaw.toFixed(1)} incidents/hr if shipped directly.`
-      pipelineLines = [
-        `Proposal captured as Δ0 = (${evaluation.projection.step0.x.toFixed(2)}, ${evaluation.projection.step0.y.toFixed(2)}).`,
-        'Guardrail checks are being computed.',
-        'No correction applied yet.',
-        'Decision pending.',
-      ]
     } else if (progress < 0.46) {
-      pipelineStep = 1
+      storyStep = 1
       nowTitle = 'Detect guardrail risk'
       nowBody = dominantLabel
         ? `Raw proposal crosses guardrail "${dominantLabel}".`
         : 'Raw proposal crosses at least one active guardrail.'
-      nowReason = 'Direct ship is blocked. Correction is required.'
       stageCaption = 'Step 2: violation detected and highlighted.'
       impactLine = dominantLabel
         ? `Blocker identified: ${dominantLabel}.`
         : 'Blocker identified from active guardrails.'
-      pipelineLines = [
-        `Raw Δ0 still points to (${evaluation.projection.step0.x.toFixed(2)}, ${evaluation.projection.step0.y.toFixed(2)}).`,
-        dominantLabel ? `Violation confirmed on ${dominantLabel}.` : 'Violation confirmed on guardrail envelope.',
-        'Correction vector is prepared.',
-        'Decision remains HOLD until correction lands.',
-      ]
     } else if (progress < 0.72) {
-      pipelineStep = 2
+      storyStep = 2
       nowTitle = 'Project certified patch'
       nowBody = 'SafePatch removes only the unsafe component while preserving useful movement.'
-      nowReason = `Trim applied: ${Math.round(evaluation.correctionNormRatio * 100)}%.`
       stageCaption = 'Step 3: unsafe component is removed.'
       impactLine = `Certification keeps ${Math.round(evaluation.retainedGain * 100)}% useful gain.`
-      pipelineLines = [
-        'Raw Δ0 remains visible for comparison.',
-        dominantLabel ? `${dominantLabel} contributes push-back force.` : 'Active guardrails contribute push-back force.',
-        `Projected Δ* keeps ${Math.round(evaluation.retainedGain * 100)}% useful gain.`,
-        'Decision recomputing with certified patch.',
-      ]
     } else {
-      pipelineStep = 3
+      storyStep = 3
       nowTitle = 'Recommend release action'
       nowBody = 'Certified patch is scored for policy compliance and operational impact.'
-      nowReason = `Recommendation: ${evaluation.decisionTone.toUpperCase()} (${evaluation.readiness}/100).`
       stageCaption = 'Step 4: certified patch and recommendation.'
       impactLine =
         incidentDelta >= 0
           ? `${incidentDelta.toFixed(1)} incidents/hr prevented versus raw ship.`
           : `${Math.abs(incidentDelta).toFixed(1)} incidents/hr higher even after correction.`
-      pipelineLines = [
-        `Raw path would yield ${incidentRaw.toFixed(1)} incidents/hr.`,
-        `${evaluation.checksRawPassed}/${evaluation.activeCheckCount} checks pass before correction.`,
-        `Certified Δ* yields ${incidentSafe.toFixed(1)} incidents/hr.`,
-        `Final decision: ${evaluation.decisionTone.toUpperCase()} (${evaluation.readiness}/100).`,
-      ]
     }
   } else if (mode === 'forces') {
-    pipelineStep = 2
+    storyStep = 2
     nowTitle = 'Inspect correction forces'
     nowBody = 'Each active guardrail contributes a correction component.'
-    nowReason = dominantLabel ? `Top pressure: ${dominantLabel}.` : 'No active correction pressure.'
     stageCaption = 'Forces view: inspect how each guardrail bends the proposal.'
     impactLine = dominantLabel
       ? `Click bars to isolate ${dominantLabel} contribution.`
       : 'No active forces. Proposal is already safe.'
-    pipelineLines = [
-      `Raw Δ0 = (${evaluation.projection.step0.x.toFixed(2)}, ${evaluation.projection.step0.y.toFixed(2)}).`,
-      dominantLabel ? `Top blocker: ${dominantLabel}.` : 'No active blocker.',
-      'Selected bar reveals one correction arrow on stage.',
-      `Decision remains ${evaluation.decisionTone.toUpperCase()} during inspection.`,
-    ]
   } else if (dragging) {
-    pipelineStep = 3
+    storyStep = 3
     nowTitle = 'Live interactive certification'
     nowBody = 'As you drag, SafePatch continuously recomputes a certifiable patch.'
-    nowReason = `Live recommendation: ${evaluation.decisionTone.toUpperCase()}.`
     stageCaption = `Live update: trim ${Math.round(evaluation.correctionNormRatio * 100)}% while dragging.`
     impactLine =
       incidentDelta >= 0
@@ -552,14 +509,12 @@ function buildOutcomeFrame(
     readinessText: `Release confidence: ${evaluation.readiness}/100`,
     nowTitle,
     nowBody,
-    nowReason,
     checksText: `${evaluation.checksSafePassed}/${evaluation.activeCheckCount}`,
     incidentText: `${incidentSafe}/hr (raw ${incidentRaw}/hr)`,
     retainedText: `${Math.round(evaluation.retainedGain * 100)}%`,
     impactLine,
     stageCaption,
-    pipelineStep,
-    pipelineLines,
+    storyStep,
   }
 }
 

@@ -37,14 +37,12 @@ export interface OutcomeFrameUi {
   readinessText: string
   nowTitle: string
   nowBody: string
-  nowReason: string
   checksText: string
   incidentText: string
   retainedText: string
   impactLine: string
   stageCaption: string
-  pipelineStep: number
-  pipelineLines: [string, string, string, string]
+  storyStep: number
 }
 
 export interface DetailFrameUi {
@@ -65,21 +63,19 @@ export class UIController {
 
   private readonly nowTitle: HTMLElement
   private readonly nowBody: HTMLElement
-  private readonly nowReason: HTMLElement
 
   private readonly decisionCard: HTMLElement
   private readonly decisionPill: HTMLElement
   private readonly decisionTitle: HTMLElement
   private readonly decisionDetail: HTMLElement
-  private readonly readinessNote: HTMLElement
 
   private readonly checksValue: HTMLElement
   private readonly incidentValue: HTMLElement
   private readonly retainedValue: HTMLElement
+  private readonly readinessNote: HTMLElement
 
-  private readonly pipelineCard: HTMLElement
-  private readonly pipelineSteps: HTMLElement[]
-  private readonly pipelineLines: HTMLElement[]
+  private readonly flowRail: HTMLElement
+  private readonly flowSteps: HTMLElement[]
   private readonly impactLine: HTMLElement
 
   private readonly presetNote: HTMLElement
@@ -119,26 +115,19 @@ export class UIController {
 
     this.nowTitle = this.getElement('now-title')
     this.nowBody = this.getElement('now-body')
-    this.nowReason = this.getElement('now-reason')
 
     this.decisionCard = this.getElement('decision-card')
     this.decisionPill = this.getElement('decision-pill')
     this.decisionTitle = this.getElement('decision-title')
     this.decisionDetail = this.getElement('decision-detail')
-    this.readinessNote = this.getElement('readiness-note')
 
     this.checksValue = this.getElement('checks-value')
     this.incidentValue = this.getElement('incident-value')
     this.retainedValue = this.getElement('retained-value')
+    this.readinessNote = this.getElement('readiness-note')
 
-    this.pipelineCard = this.getElement('pipeline-card')
-    this.pipelineSteps = Array.from(document.querySelectorAll<HTMLElement>('.pipe-step'))
-    this.pipelineLines = [
-      this.getElement('pipe-line-0'),
-      this.getElement('pipe-line-1'),
-      this.getElement('pipe-line-2'),
-      this.getElement('pipe-line-3'),
-    ]
+    this.flowRail = this.getElement('flow-rail')
+    this.flowSteps = Array.from(document.querySelectorAll<HTMLElement>('.flow-step'))
     this.impactLine = this.getElement('impact-line')
 
     this.presetNote = this.getElement('preset-note')
@@ -252,8 +241,8 @@ export class UIController {
 
   setDragActive(active: boolean): void {
     this.stageHint.textContent = active
-      ? 'Dragging proposal. Safe projection and decision are updating live.'
-      : 'Drag the red tip. Blue updates to the safest certifiable direction.'
+      ? 'Dragging proposal. Certification and decision update live.'
+      : 'Drag the red tip to test another patch instantly.'
   }
 
   renderOutcome(frame: OutcomeFrameUi): void {
@@ -266,33 +255,26 @@ export class UIController {
 
     this.decisionTitle.textContent = frame.decisionTitle
     this.decisionDetail.textContent = frame.decisionDetail
-    this.readinessNote.textContent = frame.readinessText
 
     this.nowTitle.textContent = frame.nowTitle
     this.nowBody.textContent = frame.nowBody
-    this.nowReason.textContent = frame.nowReason
 
     this.checksValue.textContent = frame.checksText
     this.incidentValue.textContent = frame.incidentText
     this.retainedValue.textContent = frame.retainedText
+    this.readinessNote.textContent = frame.readinessText
 
     this.impactLine.textContent = frame.impactLine
     this.stageCaption.textContent = frame.stageCaption
 
-    this.pipelineCard.style.setProperty('--pipeline-progress', `${Math.round(Math.min(Math.max(frame.pipelineStep / 3, 0), 1) * 100)}%`)
+    const clampedStep = Math.min(Math.max(frame.storyStep, 0), 3)
+    this.flowRail.style.setProperty('--flow-progress', `${Math.round((clampedStep / 3) * 100)}%`)
 
-    for (const node of this.pipelineSteps) {
-      const step = Number.parseInt(node.dataset.step ?? '', 10)
-      node.classList.toggle('active', step === frame.pipelineStep)
-      node.classList.toggle('completed', step < frame.pipelineStep)
+    for (const stepNode of this.flowSteps) {
+      const step = Number.parseInt(stepNode.dataset.step ?? '', 10)
+      stepNode.classList.toggle('active', step === clampedStep)
+      stepNode.classList.toggle('completed', step < clampedStep)
     }
-
-    frame.pipelineLines.forEach((line, index) => {
-      const node = this.pipelineLines[index]
-      if (node) {
-        node.textContent = line
-      }
-    })
   }
 
   renderDetails(frame: DetailFrameUi): void {
@@ -333,7 +315,7 @@ export class UIController {
 
       const value = document.createElement('p')
       value.className = 'force-value'
-      value.textContent = `λ ${item.lambda.toFixed(3)}`
+      value.textContent = `\u03bb ${item.lambda.toFixed(3)}`
 
       head.append(label, value)
 
