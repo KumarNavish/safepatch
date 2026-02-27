@@ -407,32 +407,32 @@ function buildOutcomeFrame(
     ? evaluation.halfspaces.find((halfspace) => halfspace.id === dominantActiveId)?.label ?? dominantActiveId
     : null
 
-  let frameStep = 'Certified patch ready.'
+  let frameStep = 'Release impact ready.'
   let frameSub =
     incidentDelta >= 0
-      ? `${incidentDelta.toFixed(1)} incidents/hr lower than shipping raw.`
-      : `${Math.abs(incidentDelta).toFixed(1)} incidents/hr higher than shipping raw.`
+      ? `${incidentDelta.toFixed(1)} incidents/hr prevented while keeping ${Math.round(evaluation.retainedGain * 100)}% gain.`
+      : `${Math.abs(incidentDelta).toFixed(1)} incidents/hr added even after correction.`
 
   if (mode === 'forces') {
-    frameStep = 'Forces view: inspect push-back by guardrail.'
+    frameStep = 'Forces view for debugging.'
     frameSub = dominantLabel
       ? `Click a force bar to isolate correction from ${dominantLabel}.`
       : 'No active force terms. Raw proposal is already feasible.'
   } else if (progress < 0.35) {
-    frameStep = 'Step 1: reading raw patch.'
-    frameSub = `Raw ship forecast: ${incidentRaw.toFixed(1)} incidents/hr.`
+    frameStep = 'Step 1: raw proposal captured.'
+    frameSub = `If shipped directly: ${incidentRaw.toFixed(1)} incidents/hr forecast.`
   } else if (progress < 0.52 && evaluation.rawViolationCount > 0) {
-    frameStep = 'Step 2: policy violation detected.'
+    frameStep = 'Step 2: policy risk detected.'
     frameSub = dominantLabel ? `Primary blocker: ${dominantLabel}.` : 'Primary blocker identified from active guardrails.'
   } else if (progress < 0.78 && evaluation.rawViolationCount > 0) {
-    frameStep = 'Step 3: removing only unsafe movement.'
+    frameStep = 'Step 3: unsafe component removed.'
     frameSub = `${Math.round(evaluation.retainedGain * 100)}% of intended gain is preserved.`
   } else if (progress < 1) {
-    frameStep = 'Step 4: certified patch and decision.'
+    frameStep = 'Step 4: decision computed from impact.'
     frameSub = evaluation.decisionTone === 'ship' ? 'All active checks pass for the projected patch.' : 'Projected patch still fails release criteria.'
   } else if (dragging) {
     frameStep = `Live update: ${evaluation.decisionTone.toUpperCase()}`
-    frameSub = `${Math.round(evaluation.correctionNormRatio * 100)}% trim while dragging.`
+    frameSub = `${Math.round(evaluation.correctionNormRatio * 100)}% trim required for this direction.`
   }
 
   return {
