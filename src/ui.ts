@@ -1,5 +1,3 @@
-import katex from 'katex'
-
 const sliderMax = 100
 const copyResetDelayMs = 1400
 
@@ -21,28 +19,16 @@ export interface ForceBarUi {
   isVisible: boolean
 }
 
-export interface MathTermUi {
-  id: string
-  label: string
-  lambdaTex: string
-  vectorTex: string
-  color: string
-  active: boolean
-}
-
 export interface OutcomeFrameUi {
   decisionTone: 'ship' | 'hold'
   decisionTitle: string
   decisionDetail: string
   readinessText: string
-  insightText: string
-  insightTone: 'neutral' | 'warn' | 'good'
   checksText: string
   incidentText: string
   retainedText: string
-  impactLine: string
-  stageCaption: string
-  storyStep: number
+  frameStep: string
+  frameSub: string
 }
 
 export interface DetailFrameUi {
@@ -50,18 +36,14 @@ export interface DetailFrameUi {
   whyItems: string[]
   actionItems: string[]
   memoText: string
-  mathSummaryTex: string
-  mathTerms: MathTermUi[]
 }
 
 export class UIController {
   private readonly presetButtons: HTMLButtonElement[]
   private readonly modeButtons: HTMLButtonElement[]
 
-  private readonly stageHint: HTMLElement
-  private readonly stageCaption: HTMLElement
-
-  private readonly insightPill: HTMLElement
+  private readonly frameStep: HTMLElement
+  private readonly frameSub: HTMLElement
 
   private readonly decisionCard: HTMLElement
   private readonly decisionPill: HTMLElement
@@ -72,10 +54,6 @@ export class UIController {
   private readonly incidentValue: HTMLElement
   private readonly retainedValue: HTMLElement
   private readonly readinessNote: HTMLElement
-
-  private readonly flowRail: HTMLElement
-  private readonly flowSteps: HTMLElement[]
-  private readonly impactLine: HTMLElement
 
   private readonly presetNote: HTMLElement
   private readonly tightnessSlider: HTMLInputElement
@@ -88,10 +66,6 @@ export class UIController {
   private readonly memoText: HTMLElement
   private readonly copyMemoButton: HTMLButtonElement
   private readonly exportButton: HTMLButtonElement
-
-  private readonly equationMain: HTMLElement
-  private readonly equationSub: HTMLElement
-  private readonly equationTerms: HTMLElement
 
   private selectedPresetId: PresetId
   private selectedPressure: number
@@ -109,9 +83,8 @@ export class UIController {
       throw new Error('Missing mode buttons')
     }
 
-    this.stageHint = this.getElement('stage-hint')
-    this.stageCaption = this.getElement('stage-caption')
-    this.insightPill = this.getElement('insight-pill')
+    this.frameStep = this.getElement('frame-step')
+    this.frameSub = this.getElement('frame-sub')
 
     this.decisionCard = this.getElement('decision-card')
     this.decisionPill = this.getElement('decision-pill')
@@ -122,10 +95,6 @@ export class UIController {
     this.incidentValue = this.getElement('incident-value')
     this.retainedValue = this.getElement('retained-value')
     this.readinessNote = this.getElement('readiness-note')
-
-    this.flowRail = this.getElement('flow-rail')
-    this.flowSteps = Array.from(document.querySelectorAll<HTMLElement>('.flow-step'))
-    this.impactLine = this.getElement('impact-line')
 
     this.presetNote = this.getElement('preset-note')
     this.tightnessSlider = this.getElement<HTMLInputElement>('tightness-slider')
@@ -139,10 +108,6 @@ export class UIController {
     this.copyMemoButton = this.getElement<HTMLButtonElement>('copy-memo-button')
     this.exportButton = this.getElement<HTMLButtonElement>('export-button')
 
-    this.equationMain = this.getElement('equation-main')
-    this.equationSub = this.getElement('equation-sub')
-    this.equationTerms = this.getElement('equation-terms')
-
     const activePreset = this.presetButtons.find((button) => button.classList.contains('active')) ?? this.presetButtons[0]
     this.selectedPresetId = this.parsePresetId(activePreset.dataset.preset)
     this.selectedPressure = this.parsePressure(activePreset.dataset.pressure, 0.56)
@@ -155,7 +120,6 @@ export class UIController {
     this.syncPresetButtons()
     this.syncModeButtons()
     this.syncTightness()
-    this.renderMathBase()
   }
 
   onPresetChange(callback: (controls: ControlValues) => void): void {
@@ -237,9 +201,9 @@ export class UIController {
   }
 
   setDragActive(active: boolean): void {
-    this.stageHint.textContent = active
-      ? 'Dragging proposal. Certification and decision update live.'
-      : 'Drag the red tip to test another patch instantly.'
+    if (active) {
+      this.frameSub.textContent = 'Dragging proposal. Safe patch and decision are updating live.'
+    }
   }
 
   renderOutcome(frame: OutcomeFrameUi): void {
@@ -252,27 +216,14 @@ export class UIController {
 
     this.decisionTitle.textContent = frame.decisionTitle
     this.decisionDetail.textContent = frame.decisionDetail
-
-    this.insightPill.textContent = frame.insightText
-    this.insightPill.classList.remove('neutral', 'warn', 'good')
-    this.insightPill.classList.add(frame.insightTone)
+    this.readinessNote.textContent = frame.readinessText
 
     this.checksValue.textContent = frame.checksText
     this.incidentValue.textContent = frame.incidentText
     this.retainedValue.textContent = frame.retainedText
-    this.readinessNote.textContent = frame.readinessText
 
-    this.impactLine.textContent = frame.impactLine
-    this.stageCaption.textContent = frame.stageCaption
-
-    const clampedStep = Math.min(Math.max(frame.storyStep, 0), 3)
-    this.flowRail.style.setProperty('--flow-progress', `${Math.round((clampedStep / 3) * 100)}%`)
-
-    for (const stepNode of this.flowSteps) {
-      const step = Number.parseInt(stepNode.dataset.step ?? '', 10)
-      stepNode.classList.toggle('active', step === clampedStep)
-      stepNode.classList.toggle('completed', step < clampedStep)
-    }
+    this.frameStep.textContent = frame.frameStep
+    this.frameSub.textContent = frame.frameSub
   }
 
   renderDetails(frame: DetailFrameUi): void {
@@ -281,16 +232,13 @@ export class UIController {
 
     this.renderList(this.whyList, frame.whyItems, 'No rationale yet.')
     this.renderList(this.actionList, frame.actionItems, 'No action generated yet.')
-
-    this.renderTex(this.equationSub, frame.mathSummaryTex, true)
-    this.renderMathTerms(frame.mathTerms)
   }
 
   renderForceBars(items: ForceBarUi[]): void {
     if (items.length === 0) {
       const empty = document.createElement('p')
       empty.className = 'force-empty'
-      empty.textContent = 'No active correction pressure.'
+      empty.textContent = 'No active correction forces.'
       this.forceBars.replaceChildren(empty)
       return
     }
@@ -336,44 +284,6 @@ export class UIController {
     this.forceBars.classList.toggle('hidden', !show)
   }
 
-  private renderMathBase(): void {
-    this.renderTex(this.equationMain, String.raw`\Delta^\star = \Delta_0 + \sum_{k\in\mathcal{A}}\left(-\eta\,\lambda_k\,n_k\right)`, true)
-    this.renderTex(this.equationSub, String.raw`\text{Interact to populate active correction terms.}`, true)
-  }
-
-  private renderMathTerms(terms: MathTermUi[]): void {
-    if (terms.length === 0) {
-      const empty = document.createElement('p')
-      empty.className = 'math-note'
-      empty.textContent = 'No active policy terms. Proposal is already safe.'
-      this.equationTerms.replaceChildren(empty)
-      return
-    }
-
-    const rows = terms.map((term) => {
-      const row = document.createElement('article')
-      row.className = `math-term${term.active ? '' : ' inactive'}`
-      row.style.borderLeftColor = term.color
-
-      const label = document.createElement('p')
-      label.className = 'math-label'
-      label.textContent = term.label
-
-      const lambda = document.createElement('p')
-      lambda.className = 'math-line'
-      this.renderTex(lambda, term.lambdaTex, false)
-
-      const vector = document.createElement('p')
-      vector.className = 'math-line'
-      this.renderTex(vector, term.vectorTex, false)
-
-      row.append(label, lambda, vector)
-      return row
-    })
-
-    this.equationTerms.replaceChildren(...rows)
-  }
-
   private renderList(target: HTMLUListElement, items: string[], fallback: string): void {
     const values = items.length > 0 ? items.slice(0, 4) : [fallback]
     const nodes = values.map((value) => {
@@ -382,19 +292,6 @@ export class UIController {
       return li
     })
     target.replaceChildren(...nodes)
-  }
-
-  private renderTex(target: HTMLElement, tex: string, displayMode: boolean): void {
-    try {
-      target.innerHTML = katex.renderToString(tex, {
-        displayMode,
-        throwOnError: false,
-        strict: 'ignore',
-        output: 'html',
-      })
-    } catch {
-      target.textContent = tex
-    }
   }
 
   private syncPresetButtons(): void {

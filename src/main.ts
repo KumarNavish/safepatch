@@ -1,12 +1,10 @@
-import 'katex/dist/katex.min.css'
-
 import { normalize, scale, vec, worldBoundsFromHalfspaces } from './geometry'
 import type { Halfspace, Vec2 } from './geometry'
 import { computeProjectedStep } from './qp'
 import type { ProjectionResult } from './qp'
 import { SceneRenderer } from './render'
 import { UIController } from './ui'
-import type { DetailFrameUi, ForceBarUi, MathTermUi, OutcomeFrameUi, PresetId, SceneMode } from './ui'
+import type { DetailFrameUi, ForceBarUi, OutcomeFrameUi, PresetId, SceneMode } from './ui'
 
 const ETA = 1
 const PROJECTION_TOLERANCE = 1e-6
@@ -369,11 +367,6 @@ function forceColor(constraintId: string): string {
   return CONSTRAINT_PALETTE[index % CONSTRAINT_PALETTE.length]
 }
 
-function constraintMathIndex(constraintId: string): number {
-  const index = BASE_HALFSPACES.findIndex((halfspace) => halfspace.id === constraintId)
-  return index >= 0 ? index + 1 : 0
-}
-
 function buildForceBars(evaluation: Evaluation, visibleIds: Set<string>): ForceBarUi[] {
   return evaluation.projection.diagnostics
     .filter((diagnostic) => diagnostic.active && diagnostic.lambda > PROJECTION_TOLERANCE)
@@ -385,28 +378,6 @@ function buildForceBars(evaluation: Evaluation, visibleIds: Set<string>): ForceB
       color: forceColor(diagnostic.id),
       isVisible: visibleIds.has(diagnostic.id),
     }))
-}
-
-function buildMathTerms(evaluation: Evaluation): MathTermUi[] {
-  return evaluation.projection.diagnostics
-    .filter((diagnostic) => diagnostic.active && diagnostic.lambda > PROJECTION_TOLERANCE)
-    .sort((a, b) => b.lambda - a.lambda)
-    .slice(0, 5)
-    .map((diagnostic) => {
-      const correction = evaluation.projection.correctionById[diagnostic.id] ?? vec(0, 0)
-      const mathIndex = constraintMathIndex(diagnostic.id)
-      const suffix = mathIndex > 0 ? `${mathIndex}` : diagnostic.id
-      return {
-        id: diagnostic.id,
-        label: diagnostic.label,
-        lambdaTex: String.raw`\lambda_{${suffix}}=${diagnostic.lambda.toFixed(3)}`,
-        vectorTex: String.raw`-\eta\,\lambda_{${suffix}}\,n_{${suffix}}=\left(${correction.x.toFixed(3)},\;${correction.y.toFixed(
-          3,
-        )}\right)`,
-        color: forceColor(diagnostic.id),
-        active: evaluation.projection.activeSetIds.includes(diagnostic.id),
-      }
-    })
 }
 
 function incidentRawPerHour(evaluation: Evaluation): number {
@@ -424,8 +395,6 @@ function buildOutcomeFrame(
   dragging: boolean,
 ): OutcomeFrameUi {
   const progress = clamp(teachingProgress)
-  const duringStory = mode === 'geometry' && progress < 1
-
   const incidentRaw = incidentRawPerHour(evaluation)
   const incidentSafe = incidentSafePerHour(evaluation)
   const incidentDelta = Math.round((incidentRaw - incidentSafe) * 10) / 10
@@ -438,68 +407,32 @@ function buildOutcomeFrame(
     ? evaluation.halfspaces.find((halfspace) => halfspace.id === dominantActiveId)?.label ?? dominantActiveId
     : null
 
-  let storyStep = 3
-  let stageCaption = 'Red is raw proposal. Blue is certified patch.'
-
-  let insightText = 'SafePatch is continuously certifying the proposal against active guardrails.'
-  let insightTone: 'neutral' | 'warn' | 'good' = 'neutral'
-
-  let impactLine =
+  let frameStep = 'Certified patch ready.'
+  let frameSub =
     incidentDelta >= 0
-      ? `${incidentDelta.toFixed(1)} incidents/hr avoided after certification.`
-      : `${Math.abs(incidentDelta).toFixed(1)} incidents/hr added even after certification.`
-  insightText = `${insightText} Decision: ${evaluation.decisionTone.toUpperCase()}.`
+      ? `${incidentDelta.toFixed(1)} incidents/hr lower than shipping raw.`
+      : `${Math.abs(incidentDelta).toFixed(1)} incidents/hr higher than shipping raw.`
 
-  if (duringStory) {
-    if (progress < 0.28) {
-      storyStep = 0
-      insightText = 'Intake: reading the raw proposal before any correction.'
-      insightTone = 'neutral'
-      stageCaption = 'Step 1: intake raw proposal.'
-      impactLine = `Raw forecast: ${incidentRaw.toFixed(1)} incidents/hr if shipped directly.`
-    } else if (progress < 0.46) {
-      storyStep = 1
-      insightText = dominantLabel
-        ? `Raw proposal crosses guardrail "${dominantLabel}".`
-        : 'Raw proposal crosses at least one active guardrail.'
-      insightTone = 'warn'
-      stageCaption = 'Step 2: violation detected and highlighted.'
-      impactLine = dominantLabel
-        ? `Blocker identified: ${dominantLabel}.`
-        : 'Blocker identified from active guardrails.'
-    } else if (progress < 0.72) {
-      storyStep = 2
-      insightText = 'Projection removes only the unsafe component.'
-      insightTone = 'neutral'
-      stageCaption = 'Step 3: unsafe component is removed.'
-      impactLine = `Certification keeps ${Math.round(evaluation.retainedGain * 100)}% useful gain.`
-    } else {
-      storyStep = 3
-      insightText = `Recommendation ready: ${evaluation.decisionTone.toUpperCase()}.`
-      insightTone = evaluation.decisionTone === 'ship' ? 'good' : 'warn'
-      stageCaption = 'Step 4: certified patch and recommendation.'
-      impactLine =
-        incidentDelta >= 0
-          ? `${incidentDelta.toFixed(1)} incidents/hr prevented versus raw ship.`
-          : `${Math.abs(incidentDelta).toFixed(1)} incidents/hr higher even after correction.`
-    }
-  } else if (mode === 'forces') {
-    storyStep = 2
-    insightText = 'Forces view: each active guardrail contributes one correction component.'
-    insightTone = 'neutral'
-    stageCaption = 'Forces view: inspect how each guardrail bends the proposal.'
-    impactLine = dominantLabel
-      ? `Click bars to isolate ${dominantLabel} contribution.`
-      : 'No active forces. Proposal is already safe.'
+  if (mode === 'forces') {
+    frameStep = 'Forces view: inspect push-back by guardrail.'
+    frameSub = dominantLabel
+      ? `Click a force bar to isolate correction from ${dominantLabel}.`
+      : 'No active force terms. Raw proposal is already feasible.'
+  } else if (progress < 0.35) {
+    frameStep = 'Step 1: reading raw patch.'
+    frameSub = `Raw ship forecast: ${incidentRaw.toFixed(1)} incidents/hr.`
+  } else if (progress < 0.52 && evaluation.rawViolationCount > 0) {
+    frameStep = 'Step 2: policy violation detected.'
+    frameSub = dominantLabel ? `Primary blocker: ${dominantLabel}.` : 'Primary blocker identified from active guardrails.'
+  } else if (progress < 0.78 && evaluation.rawViolationCount > 0) {
+    frameStep = 'Step 3: removing only unsafe movement.'
+    frameSub = `${Math.round(evaluation.retainedGain * 100)}% of intended gain is preserved.`
+  } else if (progress < 1) {
+    frameStep = 'Step 4: certified patch and decision.'
+    frameSub = evaluation.decisionTone === 'ship' ? 'All active checks pass for the projected patch.' : 'Projected patch still fails release criteria.'
   } else if (dragging) {
-    storyStep = 3
-    insightText = `Live update: ${evaluation.decisionTone.toUpperCase()} while dragging.`
-    insightTone = evaluation.decisionTone === 'ship' ? 'good' : 'warn'
-    stageCaption = `Live update: trim ${Math.round(evaluation.correctionNormRatio * 100)}% while dragging.`
-    impactLine =
-      incidentDelta >= 0
-        ? `${Math.abs(incidentDelta).toFixed(1)} incidents/hr lower than raw.`
-        : `${Math.abs(incidentDelta).toFixed(1)} incidents/hr higher than raw.`
+    frameStep = `Live update: ${evaluation.decisionTone.toUpperCase()}`
+    frameSub = `${Math.round(evaluation.correctionNormRatio * 100)}% trim while dragging.`
   }
 
   return {
@@ -507,14 +440,11 @@ function buildOutcomeFrame(
     decisionTitle: evaluation.decisionTitle,
     decisionDetail: evaluation.decisionDetail,
     readinessText: `Release confidence: ${evaluation.readiness}/100`,
-    insightText,
-    insightTone,
     checksText: `${evaluation.checksSafePassed}/${evaluation.activeCheckCount}`,
-    incidentText: `${incidentSafe}/hr (raw ${incidentRaw}/hr)`,
+    incidentText: `${incidentSafe.toFixed(1)}/hr (raw ${incidentRaw.toFixed(1)}/hr)`,
     retainedText: `${Math.round(evaluation.retainedGain * 100)}%`,
-    impactLine,
-    stageCaption,
-    storyStep,
+    frameStep,
+    frameSub,
   }
 }
 
@@ -527,19 +457,12 @@ function dominantConstraintId(evaluation: Evaluation): string | null {
 
 function buildDetailFrame(evaluation: Evaluation): DetailFrameUi {
   const presetNote = PRESETS[evaluation.state.presetId].note
-  const mathSummaryTex = String.raw`\Delta_0=(${evaluation.projection.step0.x.toFixed(3)}, ${evaluation.projection.step0.y.toFixed(
-    3,
-  )}),\quad \Delta^\star=(${evaluation.projection.projectedStep.x.toFixed(3)}, ${evaluation.projection.projectedStep.y.toFixed(
-    3,
-  )}),\quad \|\Delta^\star-\Delta_0\|_2=${evaluation.correctionNorm.toFixed(3)}`
 
   return {
     presetNote,
     whyItems: evaluation.whyItems,
     actionItems: evaluation.actionItems,
     memoText: evaluation.memoText,
-    mathSummaryTex,
-    mathTerms: buildMathTerms(evaluation),
   }
 }
 
