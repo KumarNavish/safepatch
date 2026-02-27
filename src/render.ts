@@ -217,9 +217,8 @@ export class SceneRenderer {
     const contentBottom = frame.y + frame.height - 12
     const contentH = contentBottom - contentTop
 
-    const topH = Math.max(250, contentH * 0.54)
-    const processH = 104
-    const summaryH = Math.max(78, contentH - topH - processH - 16)
+    const topH = Math.max(290, contentH * 0.74)
+    const summaryH = Math.max(78, contentH - topH - 8)
 
     const topRect: Rect = {
       x: frame.x + 14,
@@ -228,21 +227,14 @@ export class SceneRenderer {
       height: topH,
     }
 
-    const processRect: Rect = {
-      x: frame.x + 14,
-      y: topRect.y + topRect.height + 8,
-      width: frame.width - 28,
-      height: processH,
-    }
-
     const summaryRect: Rect = {
       x: frame.x + 14,
-      y: processRect.y + processRect.height + 8,
+      y: topRect.y + topRect.height + 8,
       width: frame.width - 28,
       height: summaryH,
     }
 
-    const padWidth = Math.max(250, Math.min(390, topRect.width * 0.42))
+    const padWidth = Math.max(250, Math.min(402, topRect.width * 0.45))
     const padRect: Rect = {
       x: topRect.x,
       y: topRect.y,
@@ -288,7 +280,6 @@ export class SceneRenderer {
       mapper,
       input,
       beats,
-      stage,
       rawBlocked,
       highlightedId,
       teachingMode,
@@ -296,16 +287,6 @@ export class SceneRenderer {
 
     this.drawImpactPanel({
       rect: chartRect,
-      input,
-      beats,
-      stage,
-      rawBlocked,
-      teachingMode,
-      seconds: input.clockMs / 1000,
-    })
-
-    this.drawProcessPanel({
-      rect: processRect,
       input,
       beats,
       stage,
@@ -394,15 +375,11 @@ export class SceneRenderer {
   }
 
   private drawHeader(frame: Rect, input: SceneRenderInput, stage: StageState, rawBlocked: boolean): void {
-    const y = frame.y + 16
+    const y = frame.y + 22
 
-    this.ctx.font = "700 15px 'Manrope'"
+    this.ctx.font = "700 12px 'Manrope'"
     this.ctx.fillStyle = withAlpha(INK, 0.96)
-    this.ctx.fillText('Release Guardrail Simulation', frame.x + 18, y)
-
-    this.ctx.font = "600 11px 'Manrope'"
-    this.ctx.fillStyle = withAlpha(MUTED, 0.94)
-    this.ctx.fillText(this.storyline(stage, rawBlocked, input.mode), frame.x + 18, y + 18)
+    this.ctx.fillText(this.storyline(stage, rawBlocked, input.mode), frame.x + 18, y)
 
     const badgeW = 100
     const badgeH = 26
@@ -426,22 +403,22 @@ export class SceneRenderer {
 
   private storyline(stage: StageState, rawBlocked: boolean, mode: SceneMode): string {
     if (mode === 'forces') {
-      return 'Inspecting which guardrail generated the correction force.'
+      return 'Inspecting which guardrail pushed the correction.'
     }
 
     if (stage.index === 0) {
-      return 'Testing the proposed patch against policy and on-call limits.'
+      return 'Testing proposed patch against release policy.'
     }
 
     if (stage.index === 1 && rawBlocked) {
-      return 'Raw proposal breaches policy. Safety gate blocks direct rollout.'
+      return 'Raw patch breaches policy.'
     }
 
     if (stage.index === 2 && rawBlocked) {
-      return 'SafePatch removes only the unsafe component of the proposal.'
+      return 'Unsafe component is removed.'
     }
 
-    return 'Certified patch updates forecast and produces a release recommendation.'
+    return 'Certified patch and release recommendation are ready.'
   }
 
   private drawPadPanel(params: {
@@ -450,12 +427,11 @@ export class SceneRenderer {
     mapper: Mapper
     input: SceneRenderInput
     beats: TeachingBeats
-    stage: StageState
     rawBlocked: boolean
     highlightedId: string | null
     teachingMode: boolean
   }): void {
-    const { rect, worldRect, mapper, input, beats, stage, rawBlocked, highlightedId, teachingMode } = params
+    const { rect, worldRect, mapper, input, beats, rawBlocked, highlightedId, teachingMode } = params
 
     this.drawPanel(rect)
     this.ctx.font = "700 10px 'IBM Plex Mono'"
@@ -517,10 +493,7 @@ export class SceneRenderer {
     if (rawBlocked && correctionVisible > 0.04) {
       const correctionTip = vecLerp(rawTipFinal, safeTipFinal, easeInOutCubic(correctionVisible))
       this.drawArrow(rawTipFinal, correctionTip, WARN, 1.9, true)
-
-      if (stage.index >= 1) {
-        this.drawPulse(rawTipFinal, WARN, 11 + (teachingMode ? beats.breach * 10 : 5))
-      }
+      this.drawPulse(rawTipFinal, WARN, 11 + (teachingMode ? beats.breach * 10 : 5))
     }
 
     if (input.mode === 'forces') {
@@ -533,22 +506,6 @@ export class SceneRenderer {
     const occupied: LabelBox[] = []
     this.drawSmartLabel({ text: 'Proposed', anchor: rawTipFinal, color: RAW, bounds: worldRect }, occupied)
     this.drawSmartLabel({ text: 'Certified', anchor: safeTipFinal, color: SAFE, bounds: worldRect }, occupied)
-
-    if (rawBlocked && stage.index >= 2) {
-      this.drawSmartLabel(
-        {
-          text: 'Unsafe component trimmed',
-          anchor: vecLerp(rawTipFinal, safeTipFinal, 0.5),
-          color: WARN,
-          bounds: worldRect,
-        },
-        occupied,
-      )
-    }
-
-    this.ctx.font = "600 10px 'Manrope'"
-    this.ctx.fillStyle = withAlpha(MUTED, 0.94)
-    this.ctx.fillText('Drag the red handle to test another patch proposal.', rect.x + 12, rect.y + rect.height - 10)
   }
 
   private drawImpactPanel(params: {
@@ -680,153 +637,6 @@ export class SceneRenderer {
       return `Correction keeps ${retainedPct}% of intended gain.`
     }
     return 'Certified patch curve shows expected operational impact.'
-  }
-
-  private drawProcessPanel(params: {
-    rect: Rect
-    input: SceneRenderInput
-    beats: TeachingBeats
-    stage: StageState
-    rawBlocked: boolean
-    teachingMode: boolean
-    seconds: number
-  }): void {
-    const { rect, input, beats, stage, rawBlocked, teachingMode, seconds } = params
-
-    this.drawPanel(rect)
-
-    const x1 = rect.x + 84
-    const x2 = rect.x + rect.width * 0.5
-    const x3 = rect.x + rect.width - 84
-
-    const yRaw = rect.y + 42
-    const ySafe = yRaw + 24
-
-    this.ctx.font = "700 10px 'IBM Plex Mono'"
-    this.ctx.fillStyle = withAlpha('#496788', 0.92)
-    this.ctx.fillText('RELEASE PIPELINE', rect.x + 12, rect.y + 16)
-
-    this.ctx.beginPath()
-    this.ctx.moveTo(x1, yRaw)
-    this.ctx.lineTo(x2, yRaw)
-    this.ctx.strokeStyle = withAlpha(rawBlocked ? RAW : SAFE, 0.4)
-    this.ctx.lineWidth = 2
-    this.ctx.stroke()
-
-    this.ctx.beginPath()
-    this.ctx.moveTo(x2, rawBlocked ? ySafe : yRaw)
-    this.ctx.lineTo(x3, rawBlocked ? ySafe : yRaw)
-    this.ctx.strokeStyle = withAlpha(SAFE, 0.52)
-    this.ctx.lineWidth = 2.5
-    this.ctx.stroke()
-
-    if (rawBlocked) {
-      this.drawArrow(vec(x2, yRaw), vec(x2, ySafe), withAlpha(WARN, 0.9), 1.8)
-    }
-
-    const gateTop = yRaw - 20
-    const gateBottom = rawBlocked ? ySafe + 20 : yRaw + 20
-    this.ctx.beginPath()
-    this.ctx.moveTo(x2, gateTop)
-    this.ctx.lineTo(x2, gateBottom)
-
-    const gatePulse = rawBlocked ? (teachingMode ? beats.breach : 1) : 0
-    this.ctx.strokeStyle = withAlpha(rawBlocked ? WARN : SAFE, rawBlocked ? 0.5 + gatePulse * 0.3 : 0.34)
-    this.ctx.lineWidth = 4
-    this.ctx.lineCap = 'round'
-    this.ctx.stroke()
-
-    this.drawNode(x1, yRaw, RAW, 'Proposed patch')
-    this.drawNode(x2, yRaw, rawBlocked ? WARN : SAFE, 'Policy gate')
-    this.drawNode(x3, rawBlocked ? ySafe : yRaw, SAFE, 'Certified rollout')
-
-    const token = this.resolvePipelineToken({ x1, x2, x3, yRaw, ySafe, rawBlocked, teachingMode, beats, seconds })
-    this.drawToken(token.position, token.color, 4.2)
-
-    this.ctx.font = "600 10px 'Manrope'"
-    this.ctx.fillStyle = withAlpha(MUTED, 0.92)
-    this.ctx.fillText(this.processCaption(stage, rawBlocked, input.stats.decisionTone), rect.x + 12, rect.y + rect.height - 10)
-  }
-
-  private resolvePipelineToken(input: {
-    x1: number
-    x2: number
-    x3: number
-    yRaw: number
-    ySafe: number
-    rawBlocked: boolean
-    teachingMode: boolean
-    beats: TeachingBeats
-    seconds: number
-  }): { position: Vec2; color: string } {
-    const { x1, x2, x3, yRaw, ySafe, rawBlocked, teachingMode, beats, seconds } = input
-
-    if (!rawBlocked) {
-      const t = teachingMode ? beats.safe : (seconds * 0.62) % 1
-      return {
-        position: vec(numberLerp(x1, x3, t), yRaw),
-        color: SAFE,
-      }
-    }
-
-    if (teachingMode) {
-      if (beats.raw < 1) {
-        return {
-          position: vec(numberLerp(x1, x2, beats.raw), yRaw),
-          color: RAW,
-        }
-      }
-
-      if (beats.breach < 1) {
-        const bounce = Math.sin(beats.breach * Math.PI) * 8
-        return {
-          position: vec(x2 - bounce, yRaw),
-          color: RAW,
-        }
-      }
-
-      if (beats.correction < 1) {
-        return {
-          position: vec(x2, numberLerp(yRaw, ySafe, beats.correction)),
-          color: WARN,
-        }
-      }
-
-      return {
-        position: vec(numberLerp(x2, x3, beats.safe), ySafe),
-        color: SAFE,
-      }
-    }
-
-    const phase = (seconds * 0.78) % 1
-    if (phase < 0.42) {
-      return {
-        position: vec(numberLerp(x1, x2, phase / 0.42), yRaw),
-        color: RAW,
-      }
-    }
-
-    if (phase < 0.58) {
-      return {
-        position: vec(x2, numberLerp(yRaw, ySafe, (phase - 0.42) / 0.16)),
-        color: WARN,
-      }
-    }
-
-    return {
-      position: vec(numberLerp(x2, x3, (phase - 0.58) / 0.42), ySafe),
-      color: SAFE,
-    }
-  }
-
-  private processCaption(stage: StageState, rawBlocked: boolean, tone: 'ship' | 'hold'): string {
-    if (stage.index <= 1 && rawBlocked) {
-      return 'Raw proposal blocked at the policy gate.'
-    }
-    if (stage.index === 2 && rawBlocked) {
-      return 'Corrective projection reroutes only the unsafe movement.'
-    }
-    return tone === 'ship' ? 'Certified path ready for rollout.' : 'Certified path still fails release policy.'
   }
 
   private drawSummaryPanel(rect: Rect, input: SceneRenderInput, stage: StageState): void {
@@ -1223,24 +1033,6 @@ export class SceneRenderer {
     this.ctx.strokeStyle = withAlpha(SAFE, 0.24)
     this.ctx.lineWidth = 1.2
     this.ctx.stroke()
-  }
-
-  private drawNode(x: number, y: number, color: string, label: string): void {
-    this.ctx.beginPath()
-    this.ctx.arc(x, y, 8, 0, Math.PI * 2)
-    this.ctx.fillStyle = withAlpha(color, 0.14)
-    this.ctx.fill()
-
-    this.ctx.beginPath()
-    this.ctx.arc(x, y, 5, 0, Math.PI * 2)
-    this.ctx.fillStyle = color
-    this.ctx.fill()
-
-    this.ctx.font = "600 10px 'Manrope'"
-    this.ctx.fillStyle = withAlpha(INK, 0.9)
-    this.ctx.textAlign = 'center'
-    this.ctx.fillText(label, x, y - 12)
-    this.ctx.textAlign = 'left'
   }
 
   private drawArrow(from: Vec2, to: Vec2, color: string, width: number, dashed = false): void {

@@ -36,12 +36,11 @@ body {
 
 .shell {
   width: min(1260px, 95vw);
-  margin: 18px auto 30px;
+  margin: 12px auto 28px;
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
-.hero,
 .stage-shell,
 .details-panel,
 .metric-card,
@@ -52,14 +51,6 @@ body {
   border: 1px solid var(--line);
   border-radius: 18px;
   background: var(--surface);
-}
-
-.hero {
-  border-radius: 24px;
-  box-shadow: var(--shadow-xl);
-  padding: clamp(18px, 2.4vw, 28px);
-  display: grid;
-  gap: 7px;
 }
 
 .brand,
@@ -79,29 +70,26 @@ body {
   text-transform: uppercase;
 }
 
-h1 {
-  margin: 0;
-  max-width: 20ch;
-  font-family: 'Instrument Serif', serif;
-  font-size: clamp(2.2rem, 4.6vw, 3.35rem);
-  line-height: 0.98;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-}
-
-.hero-copy {
-  margin: 0;
-  max-width: 76ch;
-  color: var(--ink-soft);
-  font-size: 0.92rem;
-  line-height: 1.5;
-}
-
 .stage-shell {
   box-shadow: var(--shadow-xl);
   padding: 10px;
   display: grid;
   gap: 9px;
+}
+
+.stage-intro {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: baseline;
+  padding: 2px 2px 0;
+}
+
+.stage-intro-copy {
+  margin: 0;
+  color: #345879;
+  font-size: 0.84rem;
+  line-height: 1.35;
 }
 
 .control-row {
@@ -233,8 +221,8 @@ input[type='range']::-moz-range-thumb {
 
 .preset-note {
   margin: 0;
-  color: #4c6f95;
-  font-size: 0.74rem;
+  color: #4f7297;
+  font-size: 0.68rem;
   line-height: 1.35;
 }
 
@@ -249,7 +237,7 @@ input[type='range']::-moz-range-thumb {
 
 .scene-canvas {
   width: 100%;
-  height: clamp(540px, 69vh, 820px);
+  height: clamp(520px, 66vh, 760px);
   border: 1px solid #d6e4f4;
   border-radius: 15px;
   background: #ffffff;
@@ -280,14 +268,14 @@ input[type='range']::-moz-range-thumb {
 
 .frame-step {
   color: #173755;
-  font-size: 0.79rem;
+  font-size: 0.76rem;
   line-height: 1.28;
   font-weight: 700;
 }
 
 .frame-sub {
   color: #406384;
-  font-size: 0.7rem;
+  font-size: 0.66rem;
   line-height: 1.38;
 }
 
@@ -567,18 +555,18 @@ input[type='range']::-moz-range-thumb {
     gap: 10px;
   }
 
-  .hero,
   .stage-shell,
   .details-panel {
     border-radius: 14px;
   }
 
-  .hero {
-    padding: 14px;
+  .stage-intro {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 
   .scene-canvas {
-    height: clamp(520px, 72vh, 700px);
+    height: clamp(500px, 70vh, 680px);
   }
 
   .frame-story {

@@ -18,16 +18,14 @@
   </head>
   <body>
     <main class="shell">
-      <header class="hero" aria-label="SafePatch intro">
-        <p class="brand">SafePatch</p>
-        <h1>Can this hotfix reduce incidents without breaking policy?</h1>
-        <p class="hero-copy">
-          Drag the proposed patch in the main frame. SafePatch trims only the unsafe component, forecasts operational
-          impact, and returns a clear ship-or-hold call.
-        </p>
-      </header>
-
       <section class="stage-shell" aria-label="SafePatch interactive stage">
+        <div class="stage-intro">
+          <p class="brand">SafePatch</p>
+          <p class="stage-intro-copy">
+            Drag a proposed patch and instantly see the certified patch plus incident impact before rollout.
+          </p>
+        </div>
+
         <div class="control-row" role="group" aria-label="Simulation controls">
           <div class="preset-row" role="group" aria-label="Release conditions">
             <button class="preset-btn" data-preset="normal" data-pressure="0.24" type="button">Baseline</button>
@@ -49,14 +47,14 @@
           <button id="replay-button" class="replay-btn" type="button">Replay demo</button>
         </div>
 
-        <p id="preset-note" class="preset-note">Traffic spike: proposed patch likely helps users but risks operational load.</p>
+        <p id="preset-note" class="preset-note">Current scenario: spike traffic with high operational sensitivity.</p>
 
         <div id="frame-card" class="frame-card">
           <canvas id="scene-canvas" class="scene-canvas" aria-label="Raw patch and safe patch projection"></canvas>
 
           <div class="frame-story" aria-live="polite">
-            <p id="frame-step" class="frame-step">Testing proposed patch against live policy checks.</p>
-            <p id="frame-sub" class="frame-sub">Drag the patch handle to see impact and recommendation update instantly.</p>
+            <p id="frame-step" class="frame-step">Drag the proposed patch. SafePatch shows the certified version and release impact in real time.</p>
+            <p id="frame-sub" class="frame-sub">One movement, one visible outcome.</p>
           </div>
         </div>
 
