@@ -753,8 +753,10 @@ function start(): void {
         presetId: preset.id,
         pressure: preset.pressure,
       },
-      { durationMs: UPDATE_ANIMATION_MS },
+      { stopTeaching: false, durationMs: UPDATE_ANIMATION_MS },
     )
+    teachingActive = true
+    teachingStart = performance.now()
   })
 
   ui.onTightnessChange((controls) => {

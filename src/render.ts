@@ -268,6 +268,7 @@ export class SceneRenderer {
 
     const beats = this.resolveTeachingBeats(input.teachingProgress)
     const teachingMode = input.teachingProgress < 0.999
+    const seconds = input.clockMs / 1000
 
     const rawBlocked = input.projection.diagnostics.some(
       (diagnostic) => diagnostic.active && diagnostic.violationStep0 > 1e-6,
@@ -285,6 +286,7 @@ export class SceneRenderer {
       rawBlocked,
       highlightedId,
       teachingMode,
+      seconds,
     })
 
     this.drawFlowScene({
@@ -294,6 +296,7 @@ export class SceneRenderer {
       beats,
       rawBlocked,
       teachingMode,
+      seconds,
     })
   }
 
@@ -382,8 +385,9 @@ export class SceneRenderer {
     rawBlocked: boolean
     highlightedId: string | null
     teachingMode: boolean
+    seconds: number
   }): void {
-    const { rect, mapper, input, beats, stage, rawBlocked, highlightedId, teachingMode } = params
+    const { rect, mapper, input, beats, stage, rawBlocked, highlightedId, teachingMode, seconds } = params
 
     this.drawRoundedRect(rect.x, rect.y, rect.width, rect.height, 14)
     this.ctx.fillStyle = '#fbfdff'
@@ -481,6 +485,24 @@ export class SceneRenderer {
       this.drawHandle(safeTip, SAFE_COLOR, 6.2)
     }
 
+    if (!teachingMode) {
+      const cycle = (seconds * 0.62) % 1
+      if (rawBlocked) {
+        if (cycle < 0.56) {
+          const t = cycle / 0.56
+          const packet = vecLerp(origin, hitCanvas, t)
+          this.drawToken(packet, RAW_COLOR, 4.8)
+        } else {
+          const t = (cycle - 0.56) / 0.44
+          const packet = vecLerp(hitCanvas, safeTip, t)
+          this.drawToken(packet, SAFE_COLOR, 4.8)
+        }
+      } else {
+        const packet = vecLerp(origin, safeTip, cycle)
+        this.drawToken(packet, SAFE_COLOR, 4.8)
+      }
+    }
+
     if (input.mode === 'forces') {
       this.drawForceVectors(mapper, input.projection, input.visibleCorrectionIds)
     }
@@ -510,8 +532,9 @@ export class SceneRenderer {
     beats: TeachingBeats
     rawBlocked: boolean
     teachingMode: boolean
+    seconds: number
   }): void {
-    const { rect, input, stage, rawBlocked, teachingMode } = params
+    const { rect, input, stage, rawBlocked, teachingMode, seconds } = params
 
     this.drawRoundedRect(rect.x, rect.y, rect.width, rect.height, 14)
     this.ctx.fillStyle = '#ffffff'
@@ -567,6 +590,10 @@ export class SceneRenderer {
       const from = vec(cardX + cardW * 0.5, rawY + cardH + 2)
       const to = vec(cardX + cardW * 0.5, safeY - 2)
       this.drawArrow(from, to, withAlpha(SAFE_COLOR, 0.7), 1.9)
+
+      const runnerT = teachingMode ? revealSafe : (seconds * 0.75) % 1
+      const runner = vecLerp(from, to, runnerT)
+      this.drawToken(runner, SAFE_COLOR, 3.6)
     }
 
     const checksDelta = input.stats.checksSafePassed - input.stats.checksRawPassed
