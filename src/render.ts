@@ -106,6 +106,10 @@ function vecLerp(a: Vec2, b: Vec2, t: number): Vec2 {
   }
 }
 
+function oscillate(seconds: number, speed: number, phase = 0): number {
+  return 0.5 + 0.5 * Math.sin(seconds * speed + phase)
+}
+
 function withAlpha(hex: string, alpha: number): string {
   if (!hex.startsWith('#')) {
     return hex
@@ -268,6 +272,7 @@ export class SceneRenderer {
 
     const beats = this.resolveTeachingBeats(input.teachingProgress)
     const teachingMode = input.teachingProgress < 0.999
+    const seconds = input.clockMs / 1000
 
     const rawBlocked = input.projection.diagnostics.some(
       (diagnostic) => diagnostic.active && diagnostic.violationStep0 > 1e-6,
@@ -285,6 +290,7 @@ export class SceneRenderer {
       rawBlocked,
       highlightedId,
       teachingMode,
+      seconds,
     })
 
     this.drawFlowScene({
@@ -294,6 +300,7 @@ export class SceneRenderer {
       beats,
       rawBlocked,
       teachingMode,
+      seconds,
     })
   }
 
@@ -373,6 +380,39 @@ export class SceneRenderer {
     this.ctx.fillRect(0, 0, width, height)
   }
 
+  private drawAmbientGlow(rect: Rect, seconds: number): void {
+    const cx = rect.x + rect.width * (0.35 + oscillate(seconds, 0.32, 0.4) * 0.2)
+    const cy = rect.y + rect.height * 0.36
+    const radius = rect.width * 0.44
+
+    const glow = this.ctx.createRadialGradient(cx, cy, 12, cx, cy, radius)
+    glow.addColorStop(0, 'rgba(44, 108, 245, 0.1)')
+    glow.addColorStop(1, 'rgba(44, 108, 245, 0)')
+    this.ctx.fillStyle = glow
+    this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
+  }
+
+  private drawFlowParticles(from: Vec2, to: Vec2, color: string, seconds: number, count: number, speed: number): void {
+    const dx = to.x - from.x
+    const dy = to.y - from.y
+    const distance = Math.hypot(dx, dy)
+    if (distance < 14) {
+      return
+    }
+
+    for (let i = 0; i < count; i += 1) {
+      const t = (seconds * speed + i / count) % 1
+      const p = vec(from.x + dx * t, from.y + dy * t)
+      const alpha = 0.16 + (1 - t) * 0.34
+      const radius = 2.2 + (1 - t) * 1.3
+
+      this.ctx.beginPath()
+      this.ctx.arc(p.x, p.y, radius, 0, Math.PI * 2)
+      this.ctx.fillStyle = withAlpha(color, alpha)
+      this.ctx.fill()
+    }
+  }
+
   private drawGeometryScene(params: {
     rect: Rect
     mapper: Mapper
@@ -382,8 +422,9 @@ export class SceneRenderer {
     rawBlocked: boolean
     highlightedId: string | null
     teachingMode: boolean
+    seconds: number
   }): void {
-    const { rect, mapper, input, beats, stage, rawBlocked, highlightedId, teachingMode } = params
+    const { rect, mapper, input, beats, stage, rawBlocked, highlightedId, teachingMode, seconds } = params
 
     this.drawRoundedRect(rect.x, rect.y, rect.width, rect.height, 14)
     this.ctx.fillStyle = '#fbfdff'
@@ -392,6 +433,7 @@ export class SceneRenderer {
     this.ctx.lineWidth = 1
     this.ctx.stroke()
 
+    this.drawAmbientGlow(rect, seconds)
     this.drawGrid(rect)
 
     const zone = intersectHalfspaces(input.halfspaces.filter((halfspace) => halfspace.active), mapper.worldRadius)
@@ -406,7 +448,7 @@ export class SceneRenderer {
         }
       })
       this.ctx.closePath()
-      this.ctx.fillStyle = withAlpha(SAFE_COLOR, 0.08)
+      this.ctx.fillStyle = withAlpha(SAFE_COLOR, 0.06 + oscillate(seconds, 2.2) * 0.035)
       this.ctx.fill()
       this.ctx.strokeStyle = withAlpha(SAFE_COLOR, 0.25)
       this.ctx.lineWidth = 1.4
@@ -430,7 +472,7 @@ export class SceneRenderer {
       this.ctx.beginPath()
       this.ctx.moveTo(a.x, a.y)
       this.ctx.lineTo(b.x, b.y)
-      this.ctx.strokeStyle = withAlpha(highlighted ? this.colorForConstraint(halfspace.id) : '#98afcb', highlighted ? 0.86 : 0.35)
+      this.ctx.strokeStyle = withAlpha(highlighted ? this.colorForConstraint(halfspace.id) : '#98afcb', highlighted ? 0.9 : 0.35)
       this.ctx.lineWidth = highlighted ? 2.2 : 1.1
       this.ctx.stroke()
     }
@@ -450,7 +492,8 @@ export class SceneRenderer {
     const rawProgress = teachingMode ? beats.raw : 1
     const rawDrawTip = rawBlocked ? vecLerp(origin, hitCanvas, rawProgress) : vecLerp(origin, rawTip, rawProgress)
 
-    this.drawArrow(origin, rawDrawTip, RAW_COLOR, 3)
+    this.drawArrow(origin, rawDrawTip, RAW_COLOR, 3, false, true)
+    this.drawFlowParticles(origin, rawDrawTip, RAW_COLOR, seconds, 3, 0.28)
     this.drawToken(rawDrawTip, RAW_COLOR, 5.5)
 
     if (rawProgress > 0.88) {
@@ -466,7 +509,8 @@ export class SceneRenderer {
       const correctionProgress = teachingMode ? beats.correction : 1
       if (correctionProgress > 0.03) {
         const correctionTip = vecLerp(hitCanvas, safeTip, correctionProgress)
-        this.drawArrow(hitCanvas, correctionTip, WARN_COLOR, 2.2, true)
+        this.drawArrow(hitCanvas, correctionTip, WARN_COLOR, 2.2, true, true, seconds)
+        this.drawFlowParticles(hitCanvas, correctionTip, WARN_COLOR, seconds, 2, 0.32)
         this.drawToken(correctionTip, WARN_COLOR, 4.7)
       }
     }
@@ -474,7 +518,8 @@ export class SceneRenderer {
     const safeProgress = input.mode === 'forces' ? 1 : teachingMode ? (rawBlocked ? beats.safe : beats.raw) : 1
     const safeDrawTip = vecLerp(origin, safeTip, easeOutBack(safeProgress))
 
-    this.drawArrow(origin, safeDrawTip, SAFE_COLOR, 3)
+    this.drawArrow(origin, safeDrawTip, SAFE_COLOR, 3, false, true)
+    this.drawFlowParticles(origin, safeDrawTip, SAFE_COLOR, seconds + 0.4, 4, 0.3)
     this.drawToken(safeDrawTip, SAFE_COLOR, 5)
 
     if (safeProgress > 0.86) {
@@ -482,7 +527,7 @@ export class SceneRenderer {
     }
 
     if (input.mode === 'forces') {
-      this.drawForceVectors(mapper, input.projection, input.visibleCorrectionIds)
+      this.drawForceVectors(mapper, input.projection, input.visibleCorrectionIds, seconds)
     }
 
     this.drawOrigin(origin)
@@ -492,9 +537,10 @@ export class SceneRenderer {
       blocked: rawBlocked,
       decisionTone: input.stats.decisionTone,
       dragActive: input.dragActive,
+      seconds,
     })
 
-    this.drawTimeline(rect, stage)
+    this.drawTimeline(rect, stage, seconds)
 
     const labels: LabelSpec[] = [
       { text: 'Raw', anchor: rawTip, color: RAW_COLOR },
@@ -510,8 +556,9 @@ export class SceneRenderer {
     beats: TeachingBeats
     rawBlocked: boolean
     teachingMode: boolean
+    seconds: number
   }): void {
-    const { rect, input, stage, beats, rawBlocked, teachingMode } = params
+    const { rect, input, stage, beats, rawBlocked, teachingMode, seconds } = params
 
     this.drawRoundedRect(rect.x, rect.y, rect.width, rect.height, 14)
     this.ctx.fillStyle = '#ffffff'
@@ -529,12 +576,21 @@ export class SceneRenderer {
     const y1 = rect.y + rect.height * 0.46
     const y2 = rect.y + rect.height - 72
 
-    this.drawNode(vec(nodeX, y0), 'Proposal', RAW_COLOR)
-    this.drawNode(vec(nodeX, y1), 'Policy', rawBlocked ? WARN_COLOR : SHIP_COLOR)
-    this.drawNode(vec(nodeX, y2), input.stats.decisionTone === 'ship' ? 'Deploy' : 'Hold', input.stats.decisionTone === 'ship' ? SHIP_COLOR : HOLD_COLOR)
+    const proposalPulse = 1 + oscillate(seconds, 4.2, 0.2) * 0.1
+    const policyPulse = 1 + oscillate(seconds, 4.8, 1.2) * 0.12
+    const decisionPulse = 1 + oscillate(seconds, 4.1, 2.3) * 0.1
 
-    this.drawPipelineConnector(vec(nodeX, y0 + 16), vec(nodeX, y1 - 16), stage.index >= 1 || !teachingMode)
-    this.drawPipelineConnector(vec(nodeX, y1 + 16), vec(nodeX, y2 - 16), stage.index >= 3 || !teachingMode)
+    this.drawNode(vec(nodeX, y0), 'Proposal', RAW_COLOR, proposalPulse)
+    this.drawNode(vec(nodeX, y1), 'Policy', rawBlocked ? WARN_COLOR : SHIP_COLOR, policyPulse)
+    this.drawNode(
+      vec(nodeX, y2),
+      input.stats.decisionTone === 'ship' ? 'Deploy' : 'Hold',
+      input.stats.decisionTone === 'ship' ? SHIP_COLOR : HOLD_COLOR,
+      decisionPulse,
+    )
+
+    this.drawPipelineConnector(vec(nodeX, y0 + 16), vec(nodeX, y1 - 16), stage.index >= 1 || !teachingMode, seconds, 0)
+    this.drawPipelineConnector(vec(nodeX, y1 + 16), vec(nodeX, y2 - 16), stage.index >= 3 || !teachingMode, seconds, 0.65)
 
     const tokenStart = vec(nodeX, y0)
     const tokenMid = vec(nodeX, y1)
@@ -544,16 +600,19 @@ export class SceneRenderer {
       const toPolicy = teachingMode ? clamp(beats.raw + beats.hit * 0.6) : 1
       const policyToken = vecLerp(tokenStart, tokenMid, toPolicy)
       this.drawToken(policyToken, RAW_COLOR, 4.5)
+      this.drawFlowParticles(tokenStart, tokenMid, RAW_COLOR, seconds + 0.1, 2, 0.35)
 
       const toDecision = teachingMode ? beats.safe : 1
       if (toDecision > 0.02) {
         const outToken = vecLerp(tokenMid, tokenEnd, toDecision)
         this.drawToken(outToken, input.stats.decisionTone === 'ship' ? SAFE_COLOR : WARN_COLOR, 4.8)
+        this.drawFlowParticles(tokenMid, tokenEnd, input.stats.decisionTone === 'ship' ? SAFE_COLOR : WARN_COLOR, seconds + 0.35, 2, 0.3)
       }
     } else {
       const direct = teachingMode ? clamp(beats.raw * 0.45 + beats.safe * 0.55) : 1
       const token = vecLerp(tokenStart, tokenEnd, direct)
       this.drawToken(token, SAFE_COLOR, 4.8)
+      this.drawFlowParticles(tokenStart, tokenEnd, SAFE_COLOR, seconds + 0.2, 3, 0.3)
     }
 
     const incidentMax = Math.max(input.stats.incidentRaw, input.stats.incidentSafe, 1)
@@ -561,8 +620,26 @@ export class SceneRenderer {
     const safeRatio = clamp(input.stats.incidentSafe / incidentMax)
 
     const barsY = rect.y + rect.height - 138
-    this.drawMiniBar(rect.x + 14, barsY, rect.width - 28, rawRatio, RAW_COLOR, `Raw ${input.stats.incidentRaw.toFixed(1)}/hr`)
-    this.drawMiniBar(rect.x + 14, barsY + 26, rect.width - 28, safeRatio, SAFE_COLOR, `Safe ${input.stats.incidentSafe.toFixed(1)}/hr`)
+    this.drawMiniBar(
+      rect.x + 14,
+      barsY,
+      rect.width - 28,
+      rawRatio,
+      RAW_COLOR,
+      `Raw ${input.stats.incidentRaw.toFixed(1)}/hr`,
+      seconds,
+      0,
+    )
+    this.drawMiniBar(
+      rect.x + 14,
+      barsY + 26,
+      rect.width - 28,
+      safeRatio,
+      SAFE_COLOR,
+      `Safe ${input.stats.incidentSafe.toFixed(1)}/hr`,
+      seconds,
+      1.3,
+    )
 
     const chipY = rect.y + rect.height - 44
     this.drawRoundedRect(rect.x + 14, chipY, rect.width - 28, 28, 12)
@@ -581,7 +658,7 @@ export class SceneRenderer {
     )
   }
 
-  private drawForceVectors(mapper: Mapper, projection: ProjectionResult, visibleIds: string[]): void {
+  private drawForceVectors(mapper: Mapper, projection: ProjectionResult, visibleIds: string[], seconds: number): void {
     const visible = new Set(visibleIds)
     const ids = projection.activeSetIds.filter((id) => (projection.lambdaById[id] ?? 0) > 1e-6)
 
@@ -605,7 +682,12 @@ export class SceneRenderer {
         withAlpha(this.colorForConstraint(id), selected ? 0.9 : 0.32),
         selected ? 2.3 : 1.6,
         true,
+        selected,
+        seconds,
       )
+      if (selected) {
+        this.drawFlowParticles(mapper.worldToCanvas(cursor), mapper.worldToCanvas(next), this.colorForConstraint(id), seconds, 1, 0.42)
+      }
 
       cursor = next
     }
@@ -616,8 +698,9 @@ export class SceneRenderer {
     blocked: boolean
     decisionTone: 'ship' | 'hold'
     dragActive: boolean
+    seconds: number
   }): void {
-    const { rect, blocked, decisionTone, dragActive } = input
+    const { rect, blocked, decisionTone, dragActive, seconds } = input
 
     const x = rect.x + 12
     const y = rect.y + 12
@@ -626,7 +709,7 @@ export class SceneRenderer {
 
     this.drawRoundedRect(x, y, w, h, 15)
     const tone = dragActive ? SAFE_COLOR : blocked ? WARN_COLOR : decisionTone === 'ship' ? SHIP_COLOR : HOLD_COLOR
-    this.ctx.fillStyle = withAlpha(tone, 0.11)
+    this.ctx.fillStyle = withAlpha(tone, 0.09 + oscillate(seconds, 3.2, 0.6) * 0.05)
     this.ctx.fill()
     this.ctx.strokeStyle = withAlpha(tone, 0.35)
     this.ctx.lineWidth = 1
@@ -647,7 +730,7 @@ export class SceneRenderer {
     this.ctx.fillText(text, x + 16, y + 19)
   }
 
-  private drawTimeline(rect: Rect, stage: StageState): void {
+  private drawTimeline(rect: Rect, stage: StageState, seconds: number): void {
     const width = Math.min(260, rect.width - 24)
     const x = rect.x + rect.width - width - 12
     const y = rect.y + 12
@@ -688,6 +771,14 @@ export class SceneRenderer {
       this.ctx.arc(cx, railY, i === stage.index ? 5.4 : 4, 0, Math.PI * 2)
       this.ctx.fillStyle = i <= stage.index ? withAlpha(SAFE_COLOR, 0.95) : '#edf4ff'
       this.ctx.fill()
+
+      if (i === stage.index) {
+        this.ctx.beginPath()
+        this.ctx.arc(cx, railY, 8 + oscillate(seconds, 5.5, i) * 1.6, 0, Math.PI * 2)
+        this.ctx.strokeStyle = withAlpha(SAFE_COLOR, 0.24)
+        this.ctx.lineWidth = 1
+        this.ctx.stroke()
+      }
     }
   }
 
@@ -722,14 +813,17 @@ export class SceneRenderer {
     this.ctx.restore()
   }
 
-  private drawNode(point: Vec2, label: string, color: string): void {
+  private drawNode(point: Vec2, label: string, color: string, scalePulse = 1): void {
+    const halo = 12 * scalePulse
+    const core = 6.2 * scalePulse
+
     this.ctx.beginPath()
-    this.ctx.arc(point.x, point.y, 12, 0, Math.PI * 2)
+    this.ctx.arc(point.x, point.y, halo, 0, Math.PI * 2)
     this.ctx.fillStyle = withAlpha(color, 0.14)
     this.ctx.fill()
 
     this.ctx.beginPath()
-    this.ctx.arc(point.x, point.y, 6.2, 0, Math.PI * 2)
+    this.ctx.arc(point.x, point.y, core, 0, Math.PI * 2)
     this.ctx.fillStyle = withAlpha(color, 0.96)
     this.ctx.fill()
 
@@ -740,7 +834,7 @@ export class SceneRenderer {
     this.ctx.textAlign = 'left'
   }
 
-  private drawPipelineConnector(from: Vec2, to: Vec2, active: boolean): void {
+  private drawPipelineConnector(from: Vec2, to: Vec2, active: boolean, seconds: number, phase = 0): void {
     this.ctx.beginPath()
     this.ctx.moveTo(from.x, from.y)
     this.ctx.lineTo(to.x, to.y)
@@ -748,9 +842,33 @@ export class SceneRenderer {
     this.ctx.lineWidth = 3
     this.ctx.lineCap = 'round'
     this.ctx.stroke()
+
+    if (!active) {
+      return
+    }
+
+    this.ctx.save()
+    this.ctx.setLineDash([8, 10])
+    this.ctx.lineDashOffset = -seconds * 28 - phase * 100
+    this.ctx.beginPath()
+    this.ctx.moveTo(from.x, from.y)
+    this.ctx.lineTo(to.x, to.y)
+    this.ctx.strokeStyle = withAlpha('#ffffff', 0.9)
+    this.ctx.lineWidth = 1.2
+    this.ctx.stroke()
+    this.ctx.restore()
   }
 
-  private drawMiniBar(x: number, y: number, width: number, ratio: number, color: string, text: string): void {
+  private drawMiniBar(
+    x: number,
+    y: number,
+    width: number,
+    ratio: number,
+    color: string,
+    text: string,
+    seconds: number,
+    phase: number,
+  ): void {
     this.drawRoundedRect(x, y, width, 18, 9)
     this.ctx.fillStyle = '#f5f9ff'
     this.ctx.fill()
@@ -758,16 +876,38 @@ export class SceneRenderer {
     this.ctx.lineWidth = 1
     this.ctx.stroke()
 
-    this.drawRoundedRect(x + 2, y + 2, Math.max(10, (width - 4) * ratio), 14, 7)
+    const fillWidth = Math.max(10, (width - 4) * ratio)
+    this.drawRoundedRect(x + 2, y + 2, fillWidth, 14, 7)
     this.ctx.fillStyle = withAlpha(color, 0.84)
     this.ctx.fill()
+
+    const shimmerX = x + 2 + (fillWidth - 12) * oscillate(seconds, 4.8, phase)
+    this.ctx.save()
+    this.ctx.beginPath()
+    this.drawRoundedRect(x + 2, y + 2, fillWidth, 14, 7)
+    this.ctx.clip()
+    const shimmer = this.ctx.createLinearGradient(shimmerX - 14, y + 2, shimmerX + 14, y + 16)
+    shimmer.addColorStop(0, 'rgba(255,255,255,0)')
+    shimmer.addColorStop(0.5, 'rgba(255,255,255,0.42)')
+    shimmer.addColorStop(1, 'rgba(255,255,255,0)')
+    this.ctx.fillStyle = shimmer
+    this.ctx.fillRect(shimmerX - 14, y + 2, 28, 14)
+    this.ctx.restore()
 
     this.ctx.font = "600 9px 'IBM Plex Mono'"
     this.ctx.fillStyle = '#224f90'
     this.ctx.fillText(text, x + 8, y + 12)
   }
 
-  private drawArrow(from: Vec2, to: Vec2, color: string, width: number, dashed = false): void {
+  private drawArrow(
+    from: Vec2,
+    to: Vec2,
+    color: string,
+    width: number,
+    dashed = false,
+    glow = false,
+    seconds = 0,
+  ): void {
     const dist = Math.hypot(to.x - from.x, to.y - from.y)
     if (dist < 1.2) {
       return
@@ -777,8 +917,19 @@ export class SceneRenderer {
     const head = Math.min(11, Math.max(7, width * 3.2))
 
     this.ctx.save()
+    if (glow) {
+      this.ctx.beginPath()
+      this.ctx.moveTo(from.x, from.y)
+      this.ctx.lineTo(to.x, to.y)
+      this.ctx.strokeStyle = withAlpha(color, 0.2)
+      this.ctx.lineWidth = width + 3.2
+      this.ctx.lineCap = 'round'
+      this.ctx.stroke()
+    }
+
     if (dashed) {
       this.ctx.setLineDash([8, 6])
+      this.ctx.lineDashOffset = -seconds * 34
     }
 
     this.ctx.beginPath()
@@ -819,6 +970,12 @@ export class SceneRenderer {
     this.ctx.arc(point.x, point.y, radius - 3.8, 0, Math.PI * 2)
     this.ctx.fillStyle = color
     this.ctx.fill()
+
+    this.ctx.beginPath()
+    this.ctx.arc(point.x, point.y, radius + 0.6, 0, Math.PI * 2)
+    this.ctx.strokeStyle = withAlpha('#ffffff', 0.82)
+    this.ctx.lineWidth = 1
+    this.ctx.stroke()
   }
 
   private drawToken(point: Vec2, color: string, radius: number): void {
@@ -831,6 +988,11 @@ export class SceneRenderer {
     this.ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
     this.ctx.fillStyle = color
     this.ctx.fill()
+
+    this.ctx.beginPath()
+    this.ctx.arc(point.x, point.y, Math.max(1.3, radius * 0.45), 0, Math.PI * 2)
+    this.ctx.fillStyle = withAlpha('#ffffff', 0.9)
+    this.ctx.fill()
   }
 
   private drawPulse(point: Vec2, color: string, radius: number): void {
@@ -838,6 +1000,12 @@ export class SceneRenderer {
     this.ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
     this.ctx.strokeStyle = withAlpha(color, 0.3)
     this.ctx.lineWidth = 1.8
+    this.ctx.stroke()
+
+    this.ctx.beginPath()
+    this.ctx.arc(point.x, point.y, radius * 0.72, 0, Math.PI * 2)
+    this.ctx.strokeStyle = withAlpha(color, 0.2)
+    this.ctx.lineWidth = 1.2
     this.ctx.stroke()
   }
 
