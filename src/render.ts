@@ -1,4 +1,4 @@
-import { dot, intersectHalfspaces, vec, worldBoundsFromHalfspaces } from './geometry'
+import { vec, worldBoundsFromHalfspaces } from './geometry'
 import type { Halfspace, Vec2 } from './geometry'
 import type { ProjectionResult } from './qp'
 
@@ -51,19 +51,11 @@ interface StageState {
   progress: number
 }
 
-interface LabelSpec {
-  text: string
-  anchor: Vec2
-  color: string
-}
-
-interface LabelPlacement {
-  text: string
-  x: number
-  y: number
-  width: number
-  height: number
-  color: string
+interface ChartScale {
+  minV: number
+  maxV: number
+  toX: (t: number) => number
+  toY: (v: number) => number
 }
 
 const RAW_COLOR = '#f05570'
@@ -71,9 +63,22 @@ const SAFE_COLOR = '#2c6cf5'
 const WARN_COLOR = '#f4a037'
 const SHIP_COLOR = '#119a7a'
 const HOLD_COLOR = '#9a5e2f'
+const INK = '#173858'
+const MUTED = '#4d6f92'
 
 function clamp(value: number, min = 0, max = 1): number {
   return Math.min(Math.max(value, min), max)
+}
+
+function numberLerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t
+}
+
+function vecLerp(a: Vec2, b: Vec2, t: number): Vec2 {
+  return {
+    x: numberLerp(a.x, b.x, t),
+    y: numberLerp(a.y, b.y, t),
+  }
 }
 
 function easeOutCubic(value: number): number {
@@ -95,17 +100,6 @@ function phaseWindow(progress: number, start: number, end: number): number {
   return clamp((progress - start) / (end - start))
 }
 
-function numberLerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t
-}
-
-function vecLerp(a: Vec2, b: Vec2, t: number): Vec2 {
-  return {
-    x: numberLerp(a.x, b.x, t),
-    y: numberLerp(a.y, b.y, t),
-  }
-}
-
 function withAlpha(hex: string, alpha: number): string {
   if (!hex.startsWith('#')) {
     return hex
@@ -117,32 +111,6 @@ function withAlpha(hex: string, alpha: number): string {
   const g = (parsed >> 8) & 255
   const b = parsed & 255
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
-}
-
-function placementCollision(a: LabelPlacement, b: LabelPlacement): boolean {
-  return !(
-    a.x + a.width <= b.x ||
-    b.x + b.width <= a.x ||
-    a.y + a.height <= b.y ||
-    b.y + b.height <= a.y
-  )
-}
-
-function hitRatioOnRay(step0: Vec2, halfspaces: Halfspace[]): number {
-  let ratio = 1
-
-  for (const halfspace of halfspaces) {
-    if (!halfspace.active) {
-      continue
-    }
-
-    const projected = dot(halfspace.normal, step0)
-    if (projected > halfspace.bound + 1e-7 && Math.abs(projected) > 1e-7) {
-      ratio = Math.min(ratio, halfspace.bound / projected)
-    }
-  }
-
-  return clamp(ratio, 0, 1)
 }
 
 export class SceneRenderer {
@@ -179,7 +147,7 @@ export class SceneRenderer {
     const point = vec(clientX - rect.left, clientY - rect.top)
 
     const pad = this.interactionRect
-    const margin = 8
+    const margin = 10
     if (
       point.x < pad.x - margin ||
       point.x > pad.x + pad.width + margin ||
@@ -212,7 +180,7 @@ export class SceneRenderer {
     }
 
     this.ctx.clearRect(0, 0, width, height)
-    this.drawBackground(width, height)
+    this.drawBackdrop(width, height)
 
     const frame: Rect = {
       x: 10,
@@ -228,43 +196,34 @@ export class SceneRenderer {
     this.ctx.lineWidth = 1
     this.ctx.stroke()
 
-    const narrow = frame.width < 980
-    const flowWidth = narrow ? frame.width - 32 : Math.min(300, frame.width * 0.28)
+    const chartRect: Rect = {
+      x: frame.x + 16,
+      y: frame.y + 16,
+      width: frame.width - 32,
+      height: frame.height * 0.58,
+    }
 
-    const geoRect: Rect = narrow
-      ? {
-          x: frame.x + 16,
-          y: frame.y + 16,
-          width: frame.width - 32,
-          height: frame.height - 190,
-        }
-      : {
-          x: frame.x + 16,
-          y: frame.y + 16,
-          width: frame.width - flowWidth - 30,
-          height: frame.height - 32,
-        }
+    const bottomRect: Rect = {
+      x: frame.x + 16,
+      y: chartRect.y + chartRect.height + 12,
+      width: frame.width - 32,
+      height: frame.y + frame.height - (chartRect.y + chartRect.height + 12) - 16,
+    }
 
-    const flowRect: Rect = narrow
-      ? {
-          x: geoRect.x,
-          y: geoRect.y + geoRect.height + 10,
-          width: geoRect.width,
-          height: frame.y + frame.height - (geoRect.y + geoRect.height + 10) - 16,
-        }
-      : {
-          x: geoRect.x + geoRect.width + 14,
-          y: geoRect.y,
-          width: flowWidth,
-          height: geoRect.height,
-        }
+    const padSize = Math.min(176, chartRect.height * 0.6)
+    const controlRect: Rect = {
+      x: chartRect.x + chartRect.width - padSize - 14,
+      y: chartRect.y + 14,
+      width: padSize,
+      height: padSize,
+    }
 
     const activeHalfspaces = input.halfspaces.filter((halfspace) => halfspace.active)
     const worldRadius = worldBoundsFromHalfspaces(activeHalfspaces) * 1.2
-    const mapper = this.createMapper(geoRect, worldRadius)
+    const mapper = this.createMapper(controlRect, worldRadius)
 
     this.mapper = mapper
-    this.interactionRect = geoRect
+    this.interactionRect = controlRect
 
     const beats = this.resolveTeachingBeats(input.teachingProgress)
     const teachingMode = input.teachingProgress < 0.999
@@ -273,31 +232,50 @@ export class SceneRenderer {
     const rawBlocked = input.projection.diagnostics.some(
       (diagnostic) => diagnostic.active && diagnostic.violationStep0 > 1e-6,
     )
-
-    const highlightedId = this.resolveHighlightedConstraintId(input)
     const stage = this.resolveStage(input.mode, rawBlocked, teachingMode, beats)
 
-    this.drawGeometryScene({
-      rect: geoRect,
-      mapper,
+    const highlightedId = this.resolveHighlightedConstraintId(input)
+
+    this.drawForecastChart({
+      rect: chartRect,
       input,
-      beats,
       stage,
+      beats,
       rawBlocked,
-      highlightedId,
       teachingMode,
       seconds,
     })
 
-    this.drawFlowScene({
-      rect: flowRect,
+    this.drawControlPad({
+      rect: controlRect,
+      mapper,
       input,
-      stage,
+      rawBlocked,
+      teachingMode,
+      beats,
+      highlightedId,
+      seconds,
+    })
+
+    this.drawOutcomeBoard({
+      rect: bottomRect,
+      input,
       beats,
       rawBlocked,
       teachingMode,
       seconds,
     })
+  }
+
+  private resolveHighlightedConstraintId(input: SceneRenderInput): string | null {
+    if (input.highlightedConstraintId) {
+      return input.highlightedConstraintId
+    }
+
+    const ranked = [...input.projection.activeSetIds].sort(
+      (a, b) => (input.projection.lambdaById[b] ?? 0) - (input.projection.lambdaById[a] ?? 0),
+    )
+    return ranked[0] ?? null
   }
 
   private resolveTeachingBeats(progress: number): TeachingBeats {
@@ -307,8 +285,8 @@ export class SceneRenderer {
 
     const t = clamp(progress)
     return {
-      raw: easeOutCubic(phaseWindow(t, 0, 0.32)),
-      hit: easeOutCubic(phaseWindow(t, 0.32, 0.48)),
+      raw: easeOutCubic(phaseWindow(t, 0, 0.3)),
+      hit: easeOutCubic(phaseWindow(t, 0.3, 0.48)),
       correction: easeOutCubic(phaseWindow(t, 0.48, 0.76)),
       safe: easeOutCubic(phaseWindow(t, 0.76, 1)),
     }
@@ -324,11 +302,11 @@ export class SceneRenderer {
     }
 
     if (beats.raw < 1) {
-      return { index: 0, progress: beats.raw * 0.28 }
+      return { index: 0, progress: beats.raw * 0.3 }
     }
 
     if (rawBlocked && beats.hit < 1) {
-      return { index: 1, progress: 0.28 + beats.hit * 0.2 }
+      return { index: 1, progress: 0.3 + beats.hit * 0.18 }
     }
 
     if (rawBlocked && beats.correction < 1) {
@@ -338,23 +316,12 @@ export class SceneRenderer {
     return { index: 3, progress: 0.78 + beats.safe * 0.22 }
   }
 
-  private resolveHighlightedConstraintId(input: SceneRenderInput): string | null {
-    if (input.highlightedConstraintId) {
-      return input.highlightedConstraintId
-    }
-
-    const ranked = [...input.projection.activeSetIds].sort(
-      (a, b) => (input.projection.lambdaById[b] ?? 0) - (input.projection.lambdaById[a] ?? 0),
-    )
-    return ranked[0] ?? null
-  }
-
   private createMapper(rect: Rect, worldRadius: number): Mapper {
-    const pad = 46
+    const pad = 20
     const usableWidth = Math.max(20, rect.width - pad * 2)
     const usableHeight = Math.max(20, rect.height - pad * 2)
     const scale = Math.min(usableWidth / (worldRadius * 2), usableHeight / (worldRadius * 2))
-    const center = vec(rect.x + rect.width * 0.5, rect.y + rect.height * 0.53)
+    const center = vec(rect.x + rect.width * 0.5, rect.y + rect.height * 0.5)
 
     return {
       worldRadius,
@@ -365,149 +332,122 @@ export class SceneRenderer {
     }
   }
 
-  private drawBackground(width: number, height: number): void {
+  private drawBackdrop(width: number, height: number): void {
     this.ctx.fillStyle = '#ffffff'
     this.ctx.fillRect(0, 0, width, height)
 
-    const glow = this.ctx.createRadialGradient(width * 0.15, 0, 16, width * 0.15, 0, width * 0.78)
-    glow.addColorStop(0, 'rgba(44, 108, 245, 0.12)')
+    const glow = this.ctx.createRadialGradient(width * 0.12, 0, 14, width * 0.12, 0, width * 0.72)
+    glow.addColorStop(0, 'rgba(44, 108, 245, 0.1)')
     glow.addColorStop(1, 'rgba(44, 108, 245, 0)')
     this.ctx.fillStyle = glow
     this.ctx.fillRect(0, 0, width, height)
   }
 
-  private drawGeometryScene(params: {
+  private drawForecastChart(params: {
     rect: Rect
-    mapper: Mapper
     input: SceneRenderInput
-    beats: TeachingBeats
     stage: StageState
+    beats: TeachingBeats
     rawBlocked: boolean
-    highlightedId: string | null
     teachingMode: boolean
     seconds: number
   }): void {
-    const { rect, mapper, input, beats, stage, rawBlocked, highlightedId, teachingMode, seconds } = params
+    const { rect, input, stage, beats, rawBlocked, teachingMode, seconds } = params
 
     this.drawRoundedRect(rect.x, rect.y, rect.width, rect.height, 14)
     this.ctx.fillStyle = '#fbfdff'
     this.ctx.fill()
-    this.ctx.strokeStyle = withAlpha('#d9e6f5', 0.96)
+    this.ctx.strokeStyle = withAlpha('#d7e5f5', 0.95)
     this.ctx.lineWidth = 1
     this.ctx.stroke()
 
-    this.drawGrid(rect)
-
-    const zone = intersectHalfspaces(input.halfspaces.filter((halfspace) => halfspace.active), mapper.worldRadius)
-    if (!zone.isEmpty) {
-      this.ctx.beginPath()
-      zone.vertices.forEach((vertex, index) => {
-        const p = mapper.worldToCanvas(vertex)
-        if (index === 0) {
-          this.ctx.moveTo(p.x, p.y)
-        } else {
-          this.ctx.lineTo(p.x, p.y)
-        }
-      })
-      this.ctx.closePath()
-      this.ctx.fillStyle = withAlpha(SAFE_COLOR, 0.08)
-      this.ctx.fill()
-      this.ctx.strokeStyle = withAlpha(SAFE_COLOR, 0.25)
-      this.ctx.lineWidth = 1.4
-      this.ctx.stroke()
+    const chartInner: Rect = {
+      x: rect.x + 16,
+      y: rect.y + 46,
+      width: rect.width - 208,
+      height: rect.height - 62,
     }
 
-    for (const halfspace of input.halfspaces) {
-      if (!halfspace.active) {
-        continue
-      }
+    this.ctx.font = "600 10px 'IBM Plex Mono'"
+    this.ctx.fillStyle = withAlpha('#4a6789', 0.92)
+    this.ctx.fillText('INCIDENT FORECAST (NEXT 60 MIN)', rect.x + 16, rect.y + 20)
 
-      const seg = this.constraintSegment(halfspace, mapper.worldRadius)
-      if (!seg) {
-        continue
-      }
+    const diff = Math.max(0.2, Math.abs(input.stats.incidentRaw - input.stats.incidentSafe))
+    const incidentLow = Math.max(0, Math.min(input.stats.incidentSafe, input.stats.incidentRaw) - diff * 0.35)
+    const limit = input.stats.incidentSafe + diff * 0.52 + 0.45
 
-      const a = mapper.worldToCanvas(seg[0])
-      const b = mapper.worldToCanvas(seg[1])
-      const highlighted = halfspace.id === highlightedId
-
-      this.ctx.beginPath()
-      this.ctx.moveTo(a.x, a.y)
-      this.ctx.lineTo(b.x, b.y)
-      this.ctx.strokeStyle = withAlpha(highlighted ? this.colorForConstraint(halfspace.id) : '#98afcb', highlighted ? 0.86 : 0.35)
-      this.ctx.lineWidth = highlighted ? 2.2 : 1.1
-      this.ctx.stroke()
+    const rawCurve = (t: number): number => {
+      const spike = Math.exp(-(((t - 0.45) / 0.2) ** 2))
+      const slope = 0.28 * (1 - t)
+      const direction = input.stats.incidentRaw >= input.stats.incidentSafe ? 1 : -1
+      return input.stats.incidentSafe + direction * diff * (0.56 * spike + slope) + diff * 0.22
     }
 
-    const origin = mapper.worldToCanvas(vec(0, 0))
-    const rawTip = mapper.worldToCanvas(input.projection.step0)
-    const safeTip = mapper.worldToCanvas(input.projection.projectedStep)
-    this.rawHandleCanvas = rawTip
-
-    const hitRatio = hitRatioOnRay(input.projection.step0, input.halfspaces)
-    const hitWorld = {
-      x: input.projection.step0.x * hitRatio,
-      y: input.projection.step0.y * hitRatio,
-    }
-    const hitCanvas = mapper.worldToCanvas(hitWorld)
-
-    const rawProgress = teachingMode ? beats.raw : 1
-    const rawDrawTip = rawBlocked ? vecLerp(origin, hitCanvas, rawProgress) : vecLerp(origin, rawTip, rawProgress)
-
-    this.drawArrow(origin, rawDrawTip, RAW_COLOR, 3)
-    this.drawToken(rawDrawTip, RAW_COLOR, 5.5)
-
-    if (rawProgress > 0.88) {
-      this.drawHandle(rawTip, RAW_COLOR, 7)
+    const safeCurve = (t: number): number => {
+      const mild = Math.exp(-(((t - 0.43) / 0.24) ** 2))
+      return input.stats.incidentSafe + diff * 0.08 * mild
     }
 
-    if (rawBlocked) {
-      const pulse = teachingMode ? beats.hit : 1
-      if (pulse > 0.02) {
-        this.drawPulse(hitCanvas, WARN_COLOR, 12 + pulse * 20)
-      }
+    let chartMax = limit
+    for (let i = 0; i <= 80; i += 1) {
+      const t = i / 80
+      chartMax = Math.max(chartMax, rawCurve(t), safeCurve(t))
+    }
+    chartMax += 0.5
 
-      const correctionProgress = teachingMode ? beats.correction : 1
-      if (correctionProgress > 0.03) {
-        const correctionTip = vecLerp(hitCanvas, safeTip, correctionProgress)
-        this.drawArrow(hitCanvas, correctionTip, WARN_COLOR, 2.2, true)
-        this.drawToken(correctionTip, WARN_COLOR, 4.7)
-      }
+    const scale: ChartScale = {
+      minV: incidentLow,
+      maxV: chartMax,
+      toX: (t) => chartInner.x + chartInner.width * clamp(t),
+      toY: (v) => chartInner.y + chartInner.height * (1 - clamp((v - incidentLow) / Math.max(chartMax - incidentLow, 0.1))),
     }
 
-    const safeProgress = input.mode === 'forces' ? 1 : teachingMode ? (rawBlocked ? beats.safe : beats.raw) : 1
-    const safeDrawTip = vecLerp(origin, safeTip, easeOutBack(safeProgress))
+    this.drawChartGrid(chartInner, scale)
 
-    this.drawArrow(origin, safeDrawTip, SAFE_COLOR, 3)
-    this.drawToken(safeDrawTip, SAFE_COLOR, 5)
+    const rawVisible = teachingMode ? beats.raw : 1
+    const safeVisible = teachingMode ? (rawBlocked ? beats.safe : beats.raw) : 1
 
-    if (safeProgress > 0.86) {
-      this.drawHandle(safeTip, SAFE_COLOR, 6.2)
+    this.drawThresholdLine(chartInner, scale, limit, teachingMode ? Math.max(beats.hit, beats.safe) : 1)
+    this.drawCurve(scale, rawCurve, RAW_COLOR, rawVisible, false)
+
+    if (rawBlocked && (teachingMode ? beats.hit > 0.05 : true)) {
+      const breachT = this.firstCrossing(rawCurve, limit)
+      const bx = scale.toX(breachT)
+      const by = scale.toY(rawCurve(breachT))
+      this.drawPulse(vec(bx, by), WARN_COLOR, 12 + (teachingMode ? beats.hit * 12 : 8))
     }
 
-    if (!teachingMode) {
-      const cycle = (seconds * 0.62) % 1
-      if (rawBlocked) {
-        if (cycle < 0.56) {
-          const t = cycle / 0.56
-          const packet = vecLerp(origin, hitCanvas, t)
-          this.drawToken(packet, RAW_COLOR, 4.8)
-        } else {
-          const t = (cycle - 0.56) / 0.44
-          const packet = vecLerp(hitCanvas, safeTip, t)
-          this.drawToken(packet, SAFE_COLOR, 4.8)
-        }
-      } else {
-        const packet = vecLerp(origin, safeTip, cycle)
-        this.drawToken(packet, SAFE_COLOR, 4.8)
-      }
+    this.drawCurve(scale, safeCurve, SAFE_COLOR, safeVisible, true)
+
+    if (safeVisible > 0.08) {
+      this.fillCurveGap(scale, rawCurve, safeCurve, Math.min(rawVisible, safeVisible))
     }
 
-    if (input.mode === 'forces') {
-      this.drawForceVectors(mapper, input.projection, input.visibleCorrectionIds)
-    }
+    const playT = teachingMode ? clamp(rawVisible * 0.42 + safeVisible * 0.58) : (seconds * 0.23) % 1
+    const px = scale.toX(playT)
+    const pyRaw = scale.toY(rawCurve(playT))
+    const pySafe = scale.toY(safeCurve(playT))
 
-    this.drawOrigin(origin)
+    this.drawPlayhead(chartInner, px)
+    this.drawToken(vec(px, pyRaw), RAW_COLOR, 4.2)
+    this.drawToken(vec(px, pySafe), SAFE_COLOR, 4.2)
+
+    const prevented = Math.max(0, input.stats.incidentRaw - input.stats.incidentSafe)
+    const chipX = chartInner.x
+    const chipY = rect.y + 24
+    const chipW = 190
+
+    this.drawRoundedRect(chipX, chipY, chipW, 18, 9)
+    this.ctx.fillStyle = withAlpha(prevented > 0 ? SHIP_COLOR : WARN_COLOR, 0.12)
+    this.ctx.fill()
+    this.ctx.strokeStyle = withAlpha(prevented > 0 ? SHIP_COLOR : WARN_COLOR, 0.35)
+    this.ctx.lineWidth = 1
+    this.ctx.stroke()
+
+    this.ctx.font = "600 9px 'IBM Plex Mono'"
+    this.ctx.fillStyle = withAlpha(prevented > 0 ? SHIP_COLOR : WARN_COLOR, 0.94)
+    const chipText = prevented > 0 ? `${prevented.toFixed(1)} incidents/hr prevented` : 'No incident reduction from correction'
+    this.ctx.fillText(chipText, chipX + 10, chipY + 12)
 
     this.drawStatusPill({
       rect,
@@ -515,26 +455,90 @@ export class SceneRenderer {
       decisionTone: input.stats.decisionTone,
       dragActive: input.dragActive,
     })
-
     this.drawTimeline(rect, stage)
-
-    const labels: LabelSpec[] = [
-      { text: 'Raw', anchor: rawTip, color: RAW_COLOR },
-      { text: 'Safe', anchor: safeTip, color: SAFE_COLOR },
-    ]
-    this.drawLabels(labels, rect)
   }
 
-  private drawFlowScene(params: {
+  private drawControlPad(params: {
+    rect: Rect
+    mapper: Mapper
+    input: SceneRenderInput
+    rawBlocked: boolean
+    teachingMode: boolean
+    beats: TeachingBeats
+    highlightedId: string | null
+    seconds: number
+  }): void {
+    const { rect, mapper, input, rawBlocked, teachingMode, beats, highlightedId, seconds } = params
+
+    this.drawRoundedRect(rect.x, rect.y, rect.width, rect.height, 12)
+    this.ctx.fillStyle = '#ffffff'
+    this.ctx.fill()
+    this.ctx.strokeStyle = withAlpha('#d9e6f5', 0.95)
+    this.ctx.lineWidth = 1
+    this.ctx.stroke()
+
+    this.ctx.font = "600 9px 'IBM Plex Mono'"
+    this.ctx.fillStyle = withAlpha('#496788', 0.9)
+    this.ctx.fillText('PATCH INTENT (DRAG)', rect.x + 10, rect.y + 14)
+
+    const center = mapper.center
+    const radius = Math.min(rect.width, rect.height) * 0.34
+
+    this.ctx.beginPath()
+    this.ctx.arc(center.x, center.y, radius, 0, Math.PI * 2)
+    this.ctx.strokeStyle = withAlpha('#bfd2ea', 0.7)
+    this.ctx.lineWidth = 1
+    this.ctx.stroke()
+
+    this.ctx.beginPath()
+    this.ctx.moveTo(center.x - radius, center.y)
+    this.ctx.lineTo(center.x + radius, center.y)
+    this.ctx.moveTo(center.x, center.y - radius)
+    this.ctx.lineTo(center.x, center.y + radius)
+    this.ctx.strokeStyle = withAlpha('#d0def0', 0.7)
+    this.ctx.lineWidth = 1
+    this.ctx.stroke()
+
+    const rawTip = mapper.worldToCanvas(input.projection.step0)
+    const safeTip = mapper.worldToCanvas(input.projection.projectedStep)
+    this.rawHandleCanvas = rawTip
+
+    const rawVisible = teachingMode ? beats.raw : 1
+    const safeVisible = teachingMode ? (rawBlocked ? beats.safe : beats.raw) : 1
+
+    this.drawArrow(center, vecLerp(center, rawTip, rawVisible), RAW_COLOR, 2)
+    this.drawArrow(center, vecLerp(center, safeTip, easeOutBack(safeVisible)), SAFE_COLOR, 2)
+
+    if (rawBlocked) {
+      const correctionVisible = teachingMode ? beats.correction : 1
+      if (correctionVisible > 0.05) {
+        this.drawArrow(rawTip, vecLerp(rawTip, safeTip, correctionVisible), WARN_COLOR, 1.8, true)
+      }
+    }
+
+    if (input.mode === 'forces') {
+      this.drawForceVectors(mapper, input.projection, input.visibleCorrectionIds, highlightedId)
+    }
+
+    this.drawHandle(rawTip, RAW_COLOR, 6)
+    this.drawHandle(safeTip, SAFE_COLOR, 5)
+
+    if (!teachingMode) {
+      const cycle = (seconds * 0.8) % 1
+      const packet = rawBlocked ? (cycle < 0.5 ? vecLerp(center, rawTip, cycle / 0.5) : vecLerp(rawTip, safeTip, (cycle - 0.5) / 0.5)) : vecLerp(center, safeTip, cycle)
+      this.drawToken(packet, rawBlocked && cycle < 0.5 ? RAW_COLOR : SAFE_COLOR, 3.6)
+    }
+  }
+
+  private drawOutcomeBoard(params: {
     rect: Rect
     input: SceneRenderInput
-    stage: StageState
     beats: TeachingBeats
     rawBlocked: boolean
     teachingMode: boolean
     seconds: number
   }): void {
-    const { rect, input, stage, rawBlocked, teachingMode, seconds } = params
+    const { rect, input, beats, rawBlocked, teachingMode, seconds } = params
 
     this.drawRoundedRect(rect.x, rect.y, rect.width, rect.height, 14)
     this.ctx.fillStyle = '#ffffff'
@@ -543,121 +547,84 @@ export class SceneRenderer {
     this.ctx.lineWidth = 1
     this.ctx.stroke()
 
-    this.ctx.font = "600 10px 'IBM Plex Mono'"
-    this.ctx.fillStyle = withAlpha('#4f698a', 0.9)
-    this.ctx.fillText('RELEASE IMPACT', rect.x + 14, rect.y + 18)
+    const revealRaw = teachingMode ? clamp(beats.raw + beats.hit * 0.25) : 1
+    const revealSafe = teachingMode ? clamp(beats.safe + beats.correction * 0.25) : 1
 
-    const revealRaw = teachingMode ? clamp(stage.progress * 1.4) : 1
-    const revealSafe = teachingMode ? clamp((stage.progress - 0.3) / 0.7) : 1
+    const colW = (rect.width - 44) / 3
+    const x0 = rect.x + 14
+    const y0 = rect.y + 14
 
-    const incidentMax = Math.max(input.stats.incidentRaw, input.stats.incidentSafe, 1)
-    const rawRatio = clamp(input.stats.incidentRaw / incidentMax)
-    const safeRatio = clamp(input.stats.incidentSafe / incidentMax)
-
-    const cardX = rect.x + 14
-    const cardW = rect.width - 28
-    const cardH = 82
-    const rawY = rect.y + 32
-    const safeY = rawY + cardH + 12
-
-    this.drawImpactCard({
-      x: cardX,
-      y: rawY,
-      width: cardW,
-      height: cardH,
-      title: 'If shipped raw',
+    this.drawOutcomeTile({
+      x: x0,
+      y: y0,
+      width: colW,
+      title: 'Raw Outcome',
       tone: RAW_COLOR,
-      checksText: `${input.stats.checksRawPassed}/${input.stats.checksTotal} checks`,
-      incidentText: `${input.stats.incidentRaw.toFixed(1)} incidents/hr`,
-      barRatio: rawRatio,
+      line1: `${input.stats.incidentRaw.toFixed(1)} incidents/hr`,
+      line2: `${input.stats.checksRawPassed}/${input.stats.checksTotal} checks`,
       alpha: revealRaw,
     })
 
-    this.drawImpactCard({
-      x: cardX,
-      y: safeY,
-      width: cardW,
-      height: cardH,
-      title: 'After SafePatch',
+    this.drawOutcomeTile({
+      x: x0 + colW + 8,
+      y: y0,
+      width: colW,
+      title: 'Safe Outcome',
       tone: input.stats.decisionTone === 'ship' ? SHIP_COLOR : SAFE_COLOR,
-      checksText: `${input.stats.checksSafePassed}/${input.stats.checksTotal} checks`,
-      incidentText: `${input.stats.incidentSafe.toFixed(1)} incidents/hr`,
-      barRatio: safeRatio,
-      alpha: Math.max(0.12, revealSafe),
+      line1: `${input.stats.incidentSafe.toFixed(1)} incidents/hr`,
+      line2: `${input.stats.checksSafePassed}/${input.stats.checksTotal} checks`,
+      alpha: revealSafe,
     })
 
-    if (revealSafe > 0.08) {
-      const from = vec(cardX + cardW * 0.5, rawY + cardH + 2)
-      const to = vec(cardX + cardW * 0.5, safeY - 2)
-      this.drawArrow(from, to, withAlpha(SAFE_COLOR, 0.7), 1.9)
-
-      const runnerT = teachingMode ? revealSafe : (seconds * 0.75) % 1
-      const runner = vecLerp(from, to, runnerT)
-      this.drawToken(runner, SAFE_COLOR, 3.6)
-    }
-
+    const prevented = Math.round((input.stats.incidentRaw - input.stats.incidentSafe) * 10) / 10
     const checksDelta = input.stats.checksSafePassed - input.stats.checksRawPassed
-    const incidentDelta = Math.round((input.stats.incidentRaw - input.stats.incidentSafe) * 10) / 10
-    const deltaY = safeY + cardH + 10
-    const chipW = (cardW - 10) / 2
-    const checksTone = checksDelta >= 0 ? SHIP_COLOR : WARN_COLOR
-    const incidentTone = incidentDelta >= 0 ? SHIP_COLOR : WARN_COLOR
 
-    this.drawDeltaChip(cardX, deltaY, chipW, 24, checksTone, `Checks ${checksDelta >= 0 ? '+' : ''}${checksDelta}`)
-    this.drawDeltaChip(
-      cardX + chipW + 10,
-      deltaY,
-      chipW,
-      24,
-      incidentTone,
-      incidentDelta >= 0 ? `Incidents -${incidentDelta.toFixed(1)}/hr` : `Incidents +${Math.abs(incidentDelta).toFixed(1)}/hr`,
-    )
+    this.drawOutcomeTile({
+      x: x0 + (colW + 8) * 2,
+      y: y0,
+      width: colW,
+      title: input.stats.decisionTone === 'ship' ? 'Recommendation: SHIP' : 'Recommendation: HOLD',
+      tone: input.stats.decisionTone === 'ship' ? SHIP_COLOR : HOLD_COLOR,
+      line1: prevented >= 0 ? `${prevented.toFixed(1)}/hr prevented` : `${Math.abs(prevented).toFixed(1)}/hr added`,
+      line2: `Value kept ${input.stats.retainedPct}%`,
+      alpha: Math.max(revealSafe, 0.16),
+    })
 
-    const dominant = input.projection.diagnostics
-      .filter((diagnostic) => diagnostic.active && diagnostic.lambda > 1e-6)
-      .sort((a, b) => b.lambda - a.lambda)[0]
-    const reasonText = dominant ? `Main blocker handled: ${dominant.label}` : 'No blocker: proposal already safe'
+    const bridgeY = y0 + 68
+    const start = vec(x0 + colW + 4, bridgeY)
+    const end = vec(x0 + colW + 8, bridgeY)
+    const end2 = vec(x0 + (colW + 8) * 2, bridgeY)
+
+    this.drawArrow(start, end, withAlpha(SAFE_COLOR, 0.65), 1.6)
+    this.drawArrow(vec(x0 + (colW + 8) * 2 - 4, bridgeY), end2, withAlpha(SAFE_COLOR, 0.65), 1.6)
+
+    const runner = vecLerp(start, end2, teachingMode ? clamp(revealSafe) : (seconds * 0.65) % 1)
+    this.drawToken(runner, SAFE_COLOR, 3.2)
+
+    const reason = rawBlocked ? 'Unsafe rollout pressure corrected before release.' : 'Raw rollout already inside policy limits.'
 
     this.ctx.font = "600 10px 'Manrope'"
-    this.ctx.fillStyle = withAlpha('#446382', 0.95)
-    this.ctx.fillText(reasonText, rect.x + 14, rect.y + rect.height - 56)
+    this.ctx.fillStyle = withAlpha(MUTED, 0.95)
+    this.ctx.fillText(reason, rect.x + 14, rect.y + rect.height - 18)
 
-    const chipY = rect.y + rect.height - 38
-    this.drawRoundedRect(rect.x + 14, chipY, rect.width - 28, 24, 12)
-    this.ctx.fillStyle = withAlpha(input.stats.decisionTone === 'ship' ? SHIP_COLOR : HOLD_COLOR, 0.12)
-    this.ctx.fill()
-    this.ctx.strokeStyle = withAlpha(input.stats.decisionTone === 'ship' ? SHIP_COLOR : HOLD_COLOR, 0.35)
-    this.ctx.lineWidth = 1
-    this.ctx.stroke()
-
-    this.ctx.font = "700 10px 'IBM Plex Mono'"
-    this.ctx.fillStyle = withAlpha(input.stats.decisionTone === 'ship' ? SHIP_COLOR : HOLD_COLOR, 0.96)
-    this.ctx.fillText(
-      `${input.stats.decisionTone === 'ship' ? 'SHIP' : 'HOLD'} | ${input.stats.retainedPct}% intended gain kept`,
-      rect.x + 20,
-      chipY + 16,
-    )
-
-    if (!rawBlocked) {
-      this.ctx.font = "600 10px 'IBM Plex Mono'"
-      this.ctx.fillStyle = withAlpha(SHIP_COLOR, 0.9)
-      this.ctx.fillText('Raw proposal satisfies current guardrails.', rect.x + 14, safeY - 6)
-    }
+    this.ctx.font = "600 10px 'IBM Plex Mono'"
+    this.ctx.fillStyle = withAlpha(checksDelta >= 0 ? SHIP_COLOR : WARN_COLOR, 0.92)
+    this.ctx.textAlign = 'right'
+    this.ctx.fillText(`Checks ${checksDelta >= 0 ? '+' : ''}${checksDelta}`, rect.x + rect.width - 14, rect.y + rect.height - 18)
+    this.ctx.textAlign = 'left'
   }
 
-  private drawImpactCard(input: {
+  private drawOutcomeTile(input: {
     x: number
     y: number
     width: number
-    height: number
     title: string
     tone: string
-    checksText: string
-    incidentText: string
-    barRatio: number
+    line1: string
+    line2: string
     alpha: number
   }): void {
-    const { x, y, width, height, title, tone, checksText, incidentText, barRatio, alpha } = input
+    const { x, y, width, title, tone, line1, line2, alpha } = input
     if (alpha <= 0.02) {
       return
     }
@@ -665,8 +632,8 @@ export class SceneRenderer {
     this.ctx.save()
     this.ctx.globalAlpha = alpha
 
-    this.drawRoundedRect(x, y, width, height, 12)
-    this.ctx.fillStyle = '#f8fcff'
+    this.drawRoundedRect(x, y, width, 84, 11)
+    this.ctx.fillStyle = '#f9fcff'
     this.ctx.fill()
     this.ctx.strokeStyle = withAlpha(tone, 0.3)
     this.ctx.lineWidth = 1
@@ -676,39 +643,18 @@ export class SceneRenderer {
     this.ctx.fillStyle = withAlpha(tone, 0.95)
     this.ctx.fillText(title.toUpperCase(), x + 10, y + 14)
 
-    this.ctx.font = "700 13px 'Manrope'"
-    this.ctx.fillStyle = '#193c63'
-    this.ctx.fillText(incidentText, x + 10, y + 35)
+    this.ctx.font = "700 12px 'Manrope'"
+    this.ctx.fillStyle = INK
+    this.ctx.fillText(line1, x + 10, y + 36)
 
     this.ctx.font = "600 11px 'Manrope'"
-    this.ctx.fillStyle = '#4d6f92'
-    this.ctx.fillText(checksText, x + 10, y + 50)
-
-    this.drawRoundedRect(x + 10, y + 60, width - 20, 8, 5)
-    this.ctx.fillStyle = '#e5effc'
-    this.ctx.fill()
-
-    this.drawRoundedRect(x + 10, y + 60, Math.max(8, (width - 20) * barRatio), 8, 5)
-    this.ctx.fillStyle = withAlpha(tone, 0.86)
-    this.ctx.fill()
+    this.ctx.fillStyle = withAlpha(MUTED, 0.95)
+    this.ctx.fillText(line2, x + 10, y + 56)
 
     this.ctx.restore()
   }
 
-  private drawDeltaChip(x: number, y: number, width: number, height: number, tone: string, text: string): void {
-    this.drawRoundedRect(x, y, width, height, 11)
-    this.ctx.fillStyle = withAlpha(tone, 0.1)
-    this.ctx.fill()
-    this.ctx.strokeStyle = withAlpha(tone, 0.32)
-    this.ctx.lineWidth = 1
-    this.ctx.stroke()
-
-    this.ctx.font = "600 9px 'IBM Plex Mono'"
-    this.ctx.fillStyle = withAlpha(tone, 0.96)
-    this.ctx.fillText(text, x + 10, y + 16)
-  }
-
-  private drawForceVectors(mapper: Mapper, projection: ProjectionResult, visibleIds: string[]): void {
+  private drawForceVectors(mapper: Mapper, projection: ProjectionResult, visibleIds: string[], highlightedId: string | null): void {
     const visible = new Set(visibleIds)
     const ids = projection.activeSetIds.filter((id) => (projection.lambdaById[id] ?? 0) > 1e-6)
 
@@ -725,12 +671,12 @@ export class SceneRenderer {
         y: cursor.y + correction.y,
       }
 
-      const selected = visible.size === 0 || visible.has(id)
+      const active = (visible.size === 0 || visible.has(id)) && (!highlightedId || highlightedId === id)
       this.drawArrow(
         mapper.worldToCanvas(cursor),
         mapper.worldToCanvas(next),
-        withAlpha(this.colorForConstraint(id), selected ? 0.9 : 0.32),
-        selected ? 2.3 : 1.6,
+        withAlpha(this.colorForConstraint(id), active ? 0.9 : 0.28),
+        active ? 2.2 : 1.4,
         true,
       )
 
@@ -738,129 +684,165 @@ export class SceneRenderer {
     }
   }
 
-  private drawStatusPill(input: {
-    rect: Rect
-    blocked: boolean
-    decisionTone: 'ship' | 'hold'
-    dragActive: boolean
-  }): void {
-    const { rect, blocked, decisionTone, dragActive } = input
-
-    const x = rect.x + 12
-    const y = rect.y + 12
-    const w = 170
-    const h = 30
-
-    this.drawRoundedRect(x, y, w, h, 15)
-    const tone = dragActive ? SAFE_COLOR : blocked ? WARN_COLOR : decisionTone === 'ship' ? SHIP_COLOR : HOLD_COLOR
-    this.ctx.fillStyle = withAlpha(tone, 0.11)
-    this.ctx.fill()
-    this.ctx.strokeStyle = withAlpha(tone, 0.35)
-    this.ctx.lineWidth = 1
-    this.ctx.stroke()
-
-    this.ctx.font = "600 10px 'IBM Plex Mono'"
-    this.ctx.fillStyle = withAlpha(tone, 0.96)
-
-    let text = 'RAW PATCH UNDER REVIEW'
-    if (dragActive) {
-      text = 'LIVE CERTIFICATION'
-    } else if (blocked) {
-      text = 'RAW PATCH BLOCKED'
-    } else if (decisionTone === 'ship') {
-      text = 'RAW PATCH SAFE'
-    }
-
-    this.ctx.fillText(text, x + 16, y + 19)
-  }
-
-  private drawTimeline(rect: Rect, stage: StageState): void {
-    const width = Math.min(260, rect.width - 24)
-    const x = rect.x + rect.width - width - 12
-    const y = rect.y + 12
-
-    this.drawRoundedRect(x, y, width, 30, 15)
-    this.ctx.fillStyle = withAlpha('#ffffff', 0.92)
-    this.ctx.fill()
-    this.ctx.strokeStyle = withAlpha('#d5e4f4', 0.92)
-    this.ctx.lineWidth = 1
-    this.ctx.stroke()
-
-    const railX0 = x + 18
-    const railX1 = x + width - 18
-    const railY = y + 15
-
-    this.ctx.beginPath()
-    this.ctx.moveTo(railX0, railY)
-    this.ctx.lineTo(railX1, railY)
-    this.ctx.strokeStyle = '#e0ebf9'
-    this.ctx.lineWidth = 4
-    this.ctx.lineCap = 'round'
-    this.ctx.stroke()
-
-    const fillX = numberLerp(railX0, railX1, stage.progress)
-    this.ctx.beginPath()
-    this.ctx.moveTo(railX0, railY)
-    this.ctx.lineTo(fillX, railY)
-    this.ctx.strokeStyle = withAlpha(SAFE_COLOR, 0.88)
-    this.ctx.lineWidth = 4
-    this.ctx.lineCap = 'round'
-    this.ctx.stroke()
-
-    for (let i = 0; i < 4; i += 1) {
-      const t = i / 3
-      const cx = numberLerp(railX0, railX1, t)
-
-      this.ctx.beginPath()
-      this.ctx.arc(cx, railY, i === stage.index ? 5.4 : 4, 0, Math.PI * 2)
-      this.ctx.fillStyle = i <= stage.index ? withAlpha(SAFE_COLOR, 0.95) : '#edf4ff'
-      this.ctx.fill()
-    }
-  }
-
-  private drawGrid(rect: Rect): void {
-    const cols = 6
-    const rows = 6
-
+  private drawChartGrid(rect: Rect, scale: ChartScale): void {
+    const rows = 5
     this.ctx.save()
     this.ctx.beginPath()
-    this.ctx.rect(rect.x + 1, rect.y + 1, rect.width - 2, rect.height - 2)
+    this.ctx.rect(rect.x, rect.y, rect.width, rect.height)
     this.ctx.clip()
 
-    this.ctx.strokeStyle = withAlpha('#dbe7f6', 0.7)
-    this.ctx.lineWidth = 1
-
-    for (let c = 1; c < cols; c += 1) {
-      const x = rect.x + (rect.width / cols) * c
-      this.ctx.beginPath()
-      this.ctx.moveTo(x, rect.y)
-      this.ctx.lineTo(x, rect.y + rect.height)
-      this.ctx.stroke()
-    }
-
-    for (let r = 1; r < rows; r += 1) {
-      const y = rect.y + (rect.height / rows) * r
+    for (let i = 0; i <= rows; i += 1) {
+      const y = rect.y + (rect.height / rows) * i
       this.ctx.beginPath()
       this.ctx.moveTo(rect.x, y)
       this.ctx.lineTo(rect.x + rect.width, y)
+      this.ctx.strokeStyle = withAlpha('#dce8f8', i === rows ? 0.9 : 0.6)
+      this.ctx.lineWidth = 1
       this.ctx.stroke()
+
+      if (i < rows) {
+        const value = numberLerp(scale.maxV, scale.minV, i / rows)
+        this.ctx.font = "600 9px 'IBM Plex Mono'"
+        this.ctx.fillStyle = withAlpha('#6a86a5', 0.9)
+        this.ctx.fillText(value.toFixed(1), rect.x + 4, y - 3)
+      }
     }
 
     this.ctx.restore()
   }
 
+  private drawThresholdLine(rect: Rect, scale: ChartScale, limit: number, alpha: number): void {
+    if (alpha <= 0.02) {
+      return
+    }
+
+    const y = scale.toY(limit)
+
+    this.ctx.save()
+    this.ctx.globalAlpha = clamp(alpha)
+    this.ctx.setLineDash([6, 6])
+    this.ctx.beginPath()
+    this.ctx.moveTo(rect.x, y)
+    this.ctx.lineTo(rect.x + rect.width, y)
+    this.ctx.strokeStyle = withAlpha(WARN_COLOR, 0.7)
+    this.ctx.lineWidth = 1.2
+    this.ctx.stroke()
+    this.ctx.restore()
+
+    this.ctx.font = "600 9px 'IBM Plex Mono'"
+    this.ctx.fillStyle = withAlpha(WARN_COLOR, 0.95)
+    this.ctx.fillText('On-call limit', rect.x + rect.width - 88, y - 6)
+  }
+
+  private drawCurve(scale: ChartScale, fn: (t: number) => number, color: string, visible: number, glow: boolean): void {
+    const tMax = clamp(visible)
+    if (tMax <= 0.01) {
+      return
+    }
+
+    const steps = 96
+    const toStep = Math.max(2, Math.round(steps * tMax))
+
+    if (glow) {
+      this.ctx.beginPath()
+      for (let i = 0; i <= toStep; i += 1) {
+        const t = i / steps
+        const x = scale.toX(t)
+        const y = scale.toY(fn(t))
+        if (i === 0) {
+          this.ctx.moveTo(x, y)
+        } else {
+          this.ctx.lineTo(x, y)
+        }
+      }
+      this.ctx.strokeStyle = withAlpha(color, 0.2)
+      this.ctx.lineWidth = 6
+      this.ctx.lineCap = 'round'
+      this.ctx.stroke()
+    }
+
+    this.ctx.beginPath()
+    for (let i = 0; i <= toStep; i += 1) {
+      const t = i / steps
+      const x = scale.toX(t)
+      const y = scale.toY(fn(t))
+      if (i === 0) {
+        this.ctx.moveTo(x, y)
+      } else {
+        this.ctx.lineTo(x, y)
+      }
+    }
+    this.ctx.strokeStyle = color
+    this.ctx.lineWidth = 2.4
+    this.ctx.lineCap = 'round'
+    this.ctx.stroke()
+  }
+
+  private fillCurveGap(scale: ChartScale, rawFn: (t: number) => number, safeFn: (t: number) => number, visible: number): void {
+    const tMax = clamp(visible)
+    if (tMax <= 0.04) {
+      return
+    }
+
+    const steps = 80
+    const toStep = Math.max(2, Math.round(steps * tMax))
+
+    this.ctx.beginPath()
+    for (let i = 0; i <= toStep; i += 1) {
+      const t = i / steps
+      const x = scale.toX(t)
+      const y = scale.toY(rawFn(t))
+      if (i === 0) {
+        this.ctx.moveTo(x, y)
+      } else {
+        this.ctx.lineTo(x, y)
+      }
+    }
+    for (let i = toStep; i >= 0; i -= 1) {
+      const t = i / steps
+      const x = scale.toX(t)
+      const y = scale.toY(safeFn(t))
+      this.ctx.lineTo(x, y)
+    }
+    this.ctx.closePath()
+    this.ctx.fillStyle = withAlpha(SAFE_COLOR, 0.12)
+    this.ctx.fill()
+  }
+
+  private firstCrossing(fn: (t: number) => number, limit: number): number {
+    let prev = fn(0) - limit
+    for (let i = 1; i <= 90; i += 1) {
+      const t = i / 90
+      const next = fn(t) - limit
+      if (prev <= 0 && next > 0) {
+        return t
+      }
+      prev = next
+    }
+    return 0.45
+  }
+
+  private drawPlayhead(rect: Rect, x: number): void {
+    this.ctx.beginPath()
+    this.ctx.moveTo(x, rect.y)
+    this.ctx.lineTo(x, rect.y + rect.height)
+    this.ctx.strokeStyle = withAlpha(SAFE_COLOR, 0.22)
+    this.ctx.lineWidth = 1.2
+    this.ctx.stroke()
+  }
+
   private drawArrow(from: Vec2, to: Vec2, color: string, width: number, dashed = false): void {
-    const dist = Math.hypot(to.x - from.x, to.y - from.y)
-    if (dist < 1.2) {
+    const distance = Math.hypot(to.x - from.x, to.y - from.y)
+    if (distance < 1.2) {
       return
     }
 
     const angle = Math.atan2(to.y - from.y, to.x - from.x)
-    const head = Math.min(11, Math.max(7, width * 3.2))
+    const head = Math.min(10, Math.max(6, width * 3.2))
 
     this.ctx.save()
     if (dashed) {
-      this.ctx.setLineDash([8, 6])
+      this.ctx.setLineDash([7, 5])
     }
 
     this.ctx.beginPath()
@@ -870,6 +852,7 @@ export class SceneRenderer {
     this.ctx.lineWidth = width
     this.ctx.lineCap = 'round'
     this.ctx.stroke()
+
     this.ctx.restore()
 
     this.ctx.beginPath()
@@ -883,7 +866,7 @@ export class SceneRenderer {
 
   private drawHandle(point: Vec2, color: string, radius: number): void {
     this.ctx.beginPath()
-    this.ctx.arc(point.x, point.y, radius + 4, 0, Math.PI * 2)
+    this.ctx.arc(point.x, point.y, radius + 3.4, 0, Math.PI * 2)
     this.ctx.fillStyle = withAlpha(color, 0.14)
     this.ctx.fill()
 
@@ -893,20 +876,15 @@ export class SceneRenderer {
     this.ctx.fill()
 
     this.ctx.beginPath()
-    this.ctx.arc(point.x, point.y, radius - 2.2, 0, Math.PI * 2)
+    this.ctx.arc(point.x, point.y, Math.max(1.2, radius - 2.1), 0, Math.PI * 2)
     this.ctx.fillStyle = '#ffffff'
-    this.ctx.fill()
-
-    this.ctx.beginPath()
-    this.ctx.arc(point.x, point.y, radius - 3.8, 0, Math.PI * 2)
-    this.ctx.fillStyle = color
     this.ctx.fill()
   }
 
   private drawToken(point: Vec2, color: string, radius: number): void {
     this.ctx.beginPath()
-    this.ctx.arc(point.x, point.y, radius + 3.4, 0, Math.PI * 2)
-    this.ctx.fillStyle = withAlpha(color, 0.16)
+    this.ctx.arc(point.x, point.y, radius + 2.7, 0, Math.PI * 2)
+    this.ctx.fillStyle = withAlpha(color, 0.18)
     this.ctx.fill()
 
     this.ctx.beginPath()
@@ -923,129 +901,84 @@ export class SceneRenderer {
     this.ctx.stroke()
   }
 
-  private drawOrigin(point: Vec2): void {
-    this.ctx.beginPath()
-    this.ctx.arc(point.x, point.y, 4.6, 0, Math.PI * 2)
-    this.ctx.fillStyle = '#19406a'
+  private drawStatusPill(input: {
+    rect: Rect
+    blocked: boolean
+    decisionTone: 'ship' | 'hold'
+    dragActive: boolean
+  }): void {
+    const { rect, blocked, decisionTone, dragActive } = input
+
+    const x = rect.x + 12
+    const y = rect.y + 12
+    const w = 174
+    const h = 28
+
+    this.drawRoundedRect(x, y, w, h, 14)
+    const tone = dragActive ? SAFE_COLOR : blocked ? WARN_COLOR : decisionTone === 'ship' ? SHIP_COLOR : HOLD_COLOR
+    this.ctx.fillStyle = withAlpha(tone, 0.12)
     this.ctx.fill()
-  }
+    this.ctx.strokeStyle = withAlpha(tone, 0.35)
+    this.ctx.lineWidth = 1
+    this.ctx.stroke()
 
-  private drawLabels(labels: LabelSpec[], bounds: Rect): void {
-    const placements: LabelPlacement[] = []
+    this.ctx.font = "600 10px 'IBM Plex Mono'"
+    this.ctx.fillStyle = withAlpha(tone, 0.96)
 
-    for (const label of labels) {
-      const width = Math.ceil(this.ctx.measureText(label.text).width) + 14
-      const height = 22
-      const candidates = [
-        { x: 12, y: -14 },
-        { x: 12, y: 12 },
-        { x: -width - 12, y: -14 },
-        { x: -width - 12, y: 12 },
-      ]
-
-      let chosen: LabelPlacement | null = null
-      for (const candidate of candidates) {
-        const x = clamp(label.anchor.x + candidate.x, bounds.x + 8, bounds.x + bounds.width - width - 8)
-        const y = clamp(label.anchor.y + candidate.y, bounds.y + 8, bounds.y + bounds.height - height - 8)
-        const placement: LabelPlacement = {
-          text: label.text,
-          x,
-          y,
-          width,
-          height,
-          color: label.color,
-        }
-
-        const overlaps = placements.some((existing) => placementCollision(existing, placement))
-        if (!overlaps) {
-          chosen = placement
-          break
-        }
-      }
-
-      if (!chosen) {
-        chosen = {
-          text: label.text,
-          x: clamp(label.anchor.x + 10, bounds.x + 8, bounds.x + bounds.width - width - 8),
-          y: clamp(label.anchor.y - 12, bounds.y + 8, bounds.y + bounds.height - height - 8),
-          width,
-          height,
-          color: label.color,
-        }
-      }
-
-      placements.push(chosen)
+    let text = 'RELEASE IMPACT RUNNING'
+    if (dragActive) {
+      text = 'LIVE PATCH TEST'
+    } else if (blocked) {
+      text = 'RAW RISK DETECTED'
+    } else if (decisionTone === 'ship') {
+      text = 'RAW PATCH SAFE'
     }
 
-    for (const placement of placements) {
-      this.drawRoundedRect(placement.x, placement.y, placement.width, placement.height, 11)
-      this.ctx.fillStyle = withAlpha('#ffffff', 0.93)
+    this.ctx.fillText(text, x + 12, y + 18)
+  }
+
+  private drawTimeline(rect: Rect, stage: { index: 0 | 1 | 2 | 3; progress: number }): void {
+    const width = Math.min(252, rect.width - 24)
+    const x = rect.x + rect.width - width - 12
+    const y = rect.y + 12
+
+    this.drawRoundedRect(x, y, width, 28, 14)
+    this.ctx.fillStyle = withAlpha('#ffffff', 0.92)
+    this.ctx.fill()
+    this.ctx.strokeStyle = withAlpha('#d6e5f5', 0.92)
+    this.ctx.lineWidth = 1
+    this.ctx.stroke()
+
+    const railX0 = x + 18
+    const railX1 = x + width - 18
+    const railY = y + 14
+
+    this.ctx.beginPath()
+    this.ctx.moveTo(railX0, railY)
+    this.ctx.lineTo(railX1, railY)
+    this.ctx.strokeStyle = '#e2ecf9'
+    this.ctx.lineWidth = 4
+    this.ctx.lineCap = 'round'
+    this.ctx.stroke()
+
+    const fillX = numberLerp(railX0, railX1, clamp(stage.progress))
+    this.ctx.beginPath()
+    this.ctx.moveTo(railX0, railY)
+    this.ctx.lineTo(fillX, railY)
+    this.ctx.strokeStyle = withAlpha(SAFE_COLOR, 0.9)
+    this.ctx.lineWidth = 4
+    this.ctx.lineCap = 'round'
+    this.ctx.stroke()
+
+    for (let i = 0; i < 4; i += 1) {
+      const t = i / 3
+      const cx = numberLerp(railX0, railX1, t)
+
+      this.ctx.beginPath()
+      this.ctx.arc(cx, railY, i === stage.index ? 5.2 : 3.8, 0, Math.PI * 2)
+      this.ctx.fillStyle = i <= stage.index ? withAlpha(SAFE_COLOR, 0.95) : '#edf4ff'
       this.ctx.fill()
-      this.ctx.strokeStyle = withAlpha(placement.color, 0.36)
-      this.ctx.lineWidth = 1
-      this.ctx.stroke()
-
-      this.ctx.font = "600 10px 'IBM Plex Mono'"
-      this.ctx.fillStyle = withAlpha(placement.color, 0.94)
-      this.ctx.fillText(placement.text, placement.x + 7, placement.y + 14)
     }
-  }
-
-  private constraintSegment(halfspace: Halfspace, radius: number): [Vec2, Vec2] | null {
-    const points: Vec2[] = []
-    const { normal, bound } = halfspace
-    const eps = 1e-8
-
-    if (Math.abs(normal.y) > eps) {
-      const yLeft = (bound - normal.x * -radius) / normal.y
-      if (Math.abs(yLeft) <= radius) {
-        points.push(vec(-radius, yLeft))
-      }
-
-      const yRight = (bound - normal.x * radius) / normal.y
-      if (Math.abs(yRight) <= radius) {
-        points.push(vec(radius, yRight))
-      }
-    }
-
-    if (Math.abs(normal.x) > eps) {
-      const xBottom = (bound - normal.y * -radius) / normal.x
-      if (Math.abs(xBottom) <= radius) {
-        points.push(vec(xBottom, -radius))
-      }
-
-      const xTop = (bound - normal.y * radius) / normal.x
-      if (Math.abs(xTop) <= radius) {
-        points.push(vec(xTop, radius))
-      }
-    }
-
-    const unique: Vec2[] = []
-    for (const point of points) {
-      const exists = unique.some((entry) => Math.hypot(entry.x - point.x, entry.y - point.y) < 1e-5)
-      if (!exists) {
-        unique.push(point)
-      }
-    }
-
-    if (unique.length < 2) {
-      return null
-    }
-
-    let best: [Vec2, Vec2] = [unique[0], unique[1]]
-    let maxDistance = 0
-
-    for (let i = 0; i < unique.length; i += 1) {
-      for (let j = i + 1; j < unique.length; j += 1) {
-        const distance = Math.hypot(unique[i].x - unique[j].x, unique[i].y - unique[j].y)
-        if (distance > maxDistance) {
-          maxDistance = distance
-          best = [unique[i], unique[j]]
-        }
-      }
-    }
-
-    return best
   }
 
   private colorForConstraint(id: string): string {
