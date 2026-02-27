@@ -291,6 +291,7 @@ export class SceneRenderer {
       rect: flowRect,
       input,
       stage,
+      beats,
       rawBlocked,
       teachingMode,
     })
@@ -506,6 +507,7 @@ export class SceneRenderer {
     rect: Rect
     input: SceneRenderInput
     stage: StageState
+    beats: TeachingBeats
     rawBlocked: boolean
     teachingMode: boolean
   }): void {
@@ -520,10 +522,10 @@ export class SceneRenderer {
 
     this.ctx.font = "600 10px 'IBM Plex Mono'"
     this.ctx.fillStyle = withAlpha('#4f698a', 0.9)
-    this.ctx.fillText('USEFULNESS VIEW', rect.x + 14, rect.y + 18)
+    this.ctx.fillText('RELEASE IMPACT', rect.x + 14, rect.y + 18)
 
-    const revealRaw = teachingMode ? clamp(stage.progress * 1.35) : 1
-    const revealSafe = teachingMode ? clamp((stage.progress - 0.32) / 0.68) : 1
+    const revealRaw = teachingMode ? clamp(stage.progress * 1.4) : 1
+    const revealSafe = teachingMode ? clamp((stage.progress - 0.3) / 0.7) : 1
 
     const incidentMax = Math.max(input.stats.incidentRaw, input.stats.incidentSafe, 1)
     const rawRatio = clamp(input.stats.incidentRaw / incidentMax)
@@ -531,9 +533,9 @@ export class SceneRenderer {
 
     const cardX = rect.x + 14
     const cardW = rect.width - 28
-    const cardH = 78
-    const rawY = rect.y + 30
-    const safeY = rawY + cardH + 10
+    const cardH = 82
+    const rawY = rect.y + 32
+    const safeY = rawY + cardH + 12
 
     this.drawImpactCard({
       x: cardX,
@@ -543,8 +545,8 @@ export class SceneRenderer {
       title: 'If shipped raw',
       tone: RAW_COLOR,
       checksText: `${input.stats.checksRawPassed}/${input.stats.checksTotal} checks`,
-      incidentsText: `${input.stats.incidentRaw.toFixed(1)} incidents/hr`,
-      ratio: rawRatio,
+      incidentText: `${input.stats.incidentRaw.toFixed(1)} incidents/hr`,
+      barRatio: rawRatio,
       alpha: revealRaw,
     })
 
@@ -556,28 +558,45 @@ export class SceneRenderer {
       title: 'After SafePatch',
       tone: input.stats.decisionTone === 'ship' ? SHIP_COLOR : SAFE_COLOR,
       checksText: `${input.stats.checksSafePassed}/${input.stats.checksTotal} checks`,
-      incidentsText: `${input.stats.incidentSafe.toFixed(1)} incidents/hr`,
-      ratio: safeRatio,
+      incidentText: `${input.stats.incidentSafe.toFixed(1)} incidents/hr`,
+      barRatio: safeRatio,
       alpha: Math.max(0.12, revealSafe),
     })
 
-    const checksGain = input.stats.checksSafePassed - input.stats.checksRawPassed
-    const incidentsDelta = Math.round((input.stats.incidentRaw - input.stats.incidentSafe) * 10) / 10
-    const chipsY = safeY + cardH + 10
-    const chipW = (cardW - 12) / 2
+    if (revealSafe > 0.08) {
+      const from = vec(cardX + cardW * 0.5, rawY + cardH + 2)
+      const to = vec(cardX + cardW * 0.5, safeY - 2)
+      this.drawArrow(from, to, withAlpha(SAFE_COLOR, 0.7), 1.9)
+    }
 
-    this.drawDeltaChip(cardX, chipsY, chipW, 26, checksGain >= 0 ? SHIP_COLOR : WARN_COLOR, `Checks +${checksGain}`)
+    const checksDelta = input.stats.checksSafePassed - input.stats.checksRawPassed
+    const incidentDelta = Math.round((input.stats.incidentRaw - input.stats.incidentSafe) * 10) / 10
+    const deltaY = safeY + cardH + 10
+    const chipW = (cardW - 10) / 2
+    const checksTone = checksDelta >= 0 ? SHIP_COLOR : WARN_COLOR
+    const incidentTone = incidentDelta >= 0 ? SHIP_COLOR : WARN_COLOR
+
+    this.drawDeltaChip(cardX, deltaY, chipW, 24, checksTone, `Checks ${checksDelta >= 0 ? '+' : ''}${checksDelta}`)
     this.drawDeltaChip(
-      cardX + chipW + 12,
-      chipsY,
+      cardX + chipW + 10,
+      deltaY,
       chipW,
-      26,
-      incidentsDelta >= 0 ? SHIP_COLOR : WARN_COLOR,
-      incidentsDelta >= 0 ? `Incidents -${incidentsDelta.toFixed(1)}/hr` : `Incidents +${Math.abs(incidentsDelta).toFixed(1)}/hr`,
+      24,
+      incidentTone,
+      incidentDelta >= 0 ? `Incidents -${incidentDelta.toFixed(1)}/hr` : `Incidents +${Math.abs(incidentDelta).toFixed(1)}/hr`,
     )
 
-    const chipY = rect.y + rect.height - 40
-    this.drawRoundedRect(rect.x + 14, chipY, rect.width - 28, 26, 12)
+    const dominant = input.projection.diagnostics
+      .filter((diagnostic) => diagnostic.active && diagnostic.lambda > 1e-6)
+      .sort((a, b) => b.lambda - a.lambda)[0]
+    const reasonText = dominant ? `Main blocker handled: ${dominant.label}` : 'No blocker: proposal already safe'
+
+    this.ctx.font = "600 10px 'Manrope'"
+    this.ctx.fillStyle = withAlpha('#446382', 0.95)
+    this.ctx.fillText(reasonText, rect.x + 14, rect.y + rect.height - 56)
+
+    const chipY = rect.y + rect.height - 38
+    this.drawRoundedRect(rect.x + 14, chipY, rect.width - 28, 24, 12)
     this.ctx.fillStyle = withAlpha(input.stats.decisionTone === 'ship' ? SHIP_COLOR : HOLD_COLOR, 0.12)
     this.ctx.fill()
     this.ctx.strokeStyle = withAlpha(input.stats.decisionTone === 'ship' ? SHIP_COLOR : HOLD_COLOR, 0.35)
@@ -589,13 +608,13 @@ export class SceneRenderer {
     this.ctx.fillText(
       `${input.stats.decisionTone === 'ship' ? 'SHIP' : 'HOLD'} | ${input.stats.retainedPct}% intended gain kept`,
       rect.x + 20,
-      chipY + 17,
+      chipY + 16,
     )
 
     if (!rawBlocked) {
       this.ctx.font = "600 10px 'IBM Plex Mono'"
       this.ctx.fillStyle = withAlpha(SHIP_COLOR, 0.9)
-      this.ctx.fillText('Raw proposal already satisfies active checks.', rect.x + 14, rawY + cardH + 9)
+      this.ctx.fillText('Raw proposal satisfies current guardrails.', rect.x + 14, safeY - 6)
     }
   }
 
@@ -607,11 +626,11 @@ export class SceneRenderer {
     title: string
     tone: string
     checksText: string
-    incidentsText: string
-    ratio: number
+    incidentText: string
+    barRatio: number
     alpha: number
   }): void {
-    const { x, y, width, height, title, tone, checksText, incidentsText, ratio, alpha } = input
+    const { x, y, width, height, title, tone, checksText, incidentText, barRatio, alpha } = input
     if (alpha <= 0.02) {
       return
     }
@@ -620,38 +639,7 @@ export class SceneRenderer {
     this.ctx.globalAlpha = alpha
 
     this.drawRoundedRect(x, y, width, height, 12)
-    this.ctx.fillStyle = '#f9fcff'
-    this.ctx.fill()
-    this.ctx.strokeStyle = withAlpha(tone, 0.3)
-    this.ctx.lineWidth = 1
-    this.ctx.stroke()
-
-    this.ctx.font = "600 9px 'IBM Plex Mono'"
-    this.ctx.fillStyle = withAlpha(tone, 0.94)
-    this.ctx.fillText(title.toUpperCase(), x + 10, y + 14)
-
-    this.ctx.font = "700 13px 'Manrope'"
-    this.ctx.fillStyle = '#173a62'
-    this.ctx.fillText(incidentsText, x + 10, y + 34)
-
-    this.ctx.font = "600 11px 'Manrope'"
-    this.ctx.fillStyle = '#4f6f92'
-    this.ctx.fillText(checksText, x + 10, y + 49)
-
-    this.drawRoundedRect(x + 10, y + 58, width - 20, 8, 5)
-    this.ctx.fillStyle = '#e5eefb'
-    this.ctx.fill()
-
-    this.drawRoundedRect(x + 10, y + 58, Math.max(8, (width - 20) * clamp(ratio)), 8, 5)
-    this.ctx.fillStyle = withAlpha(tone, 0.86)
-    this.ctx.fill()
-
-    this.ctx.restore()
-  }
-
-  private drawDeltaChip(x: number, y: number, width: number, height: number, tone: string, text: string): void {
-    this.drawRoundedRect(x, y, width, height, 12)
-    this.ctx.fillStyle = withAlpha(tone, 0.1)
+    this.ctx.fillStyle = '#f8fcff'
     this.ctx.fill()
     this.ctx.strokeStyle = withAlpha(tone, 0.3)
     this.ctx.lineWidth = 1
@@ -659,7 +647,38 @@ export class SceneRenderer {
 
     this.ctx.font = "600 9px 'IBM Plex Mono'"
     this.ctx.fillStyle = withAlpha(tone, 0.95)
-    this.ctx.fillText(text, x + 10, y + 17)
+    this.ctx.fillText(title.toUpperCase(), x + 10, y + 14)
+
+    this.ctx.font = "700 13px 'Manrope'"
+    this.ctx.fillStyle = '#193c63'
+    this.ctx.fillText(incidentText, x + 10, y + 35)
+
+    this.ctx.font = "600 11px 'Manrope'"
+    this.ctx.fillStyle = '#4d6f92'
+    this.ctx.fillText(checksText, x + 10, y + 50)
+
+    this.drawRoundedRect(x + 10, y + 60, width - 20, 8, 5)
+    this.ctx.fillStyle = '#e5effc'
+    this.ctx.fill()
+
+    this.drawRoundedRect(x + 10, y + 60, Math.max(8, (width - 20) * barRatio), 8, 5)
+    this.ctx.fillStyle = withAlpha(tone, 0.86)
+    this.ctx.fill()
+
+    this.ctx.restore()
+  }
+
+  private drawDeltaChip(x: number, y: number, width: number, height: number, tone: string, text: string): void {
+    this.drawRoundedRect(x, y, width, height, 11)
+    this.ctx.fillStyle = withAlpha(tone, 0.1)
+    this.ctx.fill()
+    this.ctx.strokeStyle = withAlpha(tone, 0.32)
+    this.ctx.lineWidth = 1
+    this.ctx.stroke()
+
+    this.ctx.font = "600 9px 'IBM Plex Mono'"
+    this.ctx.fillStyle = withAlpha(tone, 0.96)
+    this.ctx.fillText(text, x + 10, y + 16)
   }
 
   private drawForceVectors(mapper: Mapper, projection: ProjectionResult, visibleIds: string[]): void {
