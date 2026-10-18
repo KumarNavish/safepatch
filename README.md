@@ -16,45 +16,49 @@ s.t.    <g_k, Δ> <= ε_k
 - Dual multipliers `λ_k >= 0` with animated dials.
 - SHIP/HOLD state with reason when certification fails.
 
-## Structure
+## Repository structure
 
-```text
-/demo
-  index.html
-  styles.css
-  src/
-    main.ts
-    geometry.ts
-    qp.ts
-    render.ts
-    ui.ts
-  tests/
-    geometry.test.ts
-  README.md
-```
+This is the standalone source repository. Run commands from its root.
 
-In this repository, the demo lives at:
-
-- `site/demos/safepatch/` (source)
-- `site/public/safepatch/` (built output)
+- `index.html` and `styles.css`: page and styling.
+- `src/`: TypeScript geometry, optimization, rendering and controls.
+- `tests/`: geometry regressions.
+- `package.json`: development, verification and build entrypoints.
+- `.github/workflows/pages.yml`: pull-request checks and main-branch Pages deployment.
 
 ## Local development
 
-From `site/`:
-
 ```bash
-npm install
-npm run safepatch:dev
+npm ci
+npm run dev
 ```
 
-Build static output:
+Build the static application:
 
 ```bash
-npm run safepatch:build
+npm run build
 ```
 
-Run tests:
+Preview an existing build:
 
 ```bash
-npm run safepatch:test
+npm run preview
 ```
+
+## Verification
+
+Run the tests:
+
+```bash
+npm test
+```
+
+Run the complete local check used by CI:
+
+```bash
+npm run check
+```
+
+This runs lint, TypeScript checks, tests and the production build. The workflow
+checks pull requests without deploying them. A push to `main` also deploys Pages,
+including a documentation-only push.
